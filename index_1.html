@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Beacon</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+<style>
+:root{
+  --bg:#0b0f14; --surface:#131a23; --surface2:#1b232e; --line:#26303c;
+  --text:#e8eef5; --muted:#8a99ab; --faint:#5b6b7c;
+  --accent:#2f81f7; --accent2:#1f6feb;
+  --sos:#ff3b47; --sos-deep:#c1121f;
+  --ok:#2ecc71; --warn:#f6b73c; --journey:#a371f7;
+  --radius:16px; --tap:48px;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; overflow:hidden;
+}
+#app{height:100%;display:flex;flex-direction:column;max-width:720px;margin:0 auto;position:relative}
+.hidden{display:none !important}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input,select{font:inherit;color:var(--text);background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.btn{background:var(--accent);color:#fff;border-radius:12px;padding:13px 16px;font-weight:600;text-align:center;min-height:var(--tap);display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%}
+.btn.sec{background:var(--surface2);border:1px solid var(--line);color:var(--text)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.btn.danger{background:var(--sos)}
+.btn.sm{padding:8px 12px;min-height:38px;width:auto;font-size:13px;border-radius:10px}
+.btn:active{transform:translateY(1px)}
+.row{display:flex;gap:10px;align-items:center}
+.col{display:flex;flex-direction:column;gap:10px}
+.sp{flex:1}
+.muted{color:var(--muted)}.faint{color:var(--faint)}.small{font-size:12.5px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--surface2);border:1px solid var(--line)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.sos{background:var(--sos)}.dot.journey{background:var(--journey)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card+.card{margin-top:12px}
+
+/* Header */
+header{padding:calc(var(--safe-t) + 14px) 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0e141b,#0b0f14)}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.2px}
+.logo .mk{width:26px;height:26px;border-radius:8px;background:radial-gradient(circle at 50% 35%,#5aa0ff,#1f6feb);display:grid;place-items:center;box-shadow:0 0 0 3px rgba(47,129,247,.18)}
+.logo .mk svg{width:15px;height:15px}
+.who{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12.5px}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--accent2);display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+
+/* Scroll area */
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 22px}
+.view{display:none}.view.active{display:block}
+h2.title{font-size:19px;margin:2px 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 16px}
+
+/* Bottom nav */
+nav{display:flex;border-top:1px solid var(--line);background:#0e141b;padding-bottom:var(--safe-b)}
+nav button{flex:1;padding:9px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--faint);font-size:10.5px;font-weight:600;position:relative}
+nav button svg{width:22px;height:22px}
+nav button.on{color:var(--accent)}
+nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos);color:#fff;font-size:9px;min-width:16px;height:16px;border-radius:999px;display:grid;place-items:center;padding:0 4px;font-weight:700}
+
+/* SOS */
+.sosWrap{display:flex;flex-direction:column;align-items:center;gap:6px;margin:10px 0 4px}
+.sosBtn{width:196px;height:196px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#ff6066,#d61f2a);color:#fff;font-weight:800;font-size:30px;letter-spacing:3px;box-shadow:0 10px 40px rgba(214,18,42,.45),inset 0 2px 10px rgba(255,255,255,.25);position:relative;display:grid;place-items:center}
+.sosBtn small{display:block;font-size:11px;font-weight:600;letter-spacing:1px;opacity:.9;margin-top:4px}
+.sosBtn.armed{animation:pulse 1.1s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,59,71,.5),0 10px 40px rgba(214,18,42,.45)}70%{box-shadow:0 0 0 26px rgba(255,59,71,0),0 10px 40px rgba(214,18,42,.45)}100%{box-shadow:0 0 0 0 rgba(255,59,71,0),0 10px 40px rgba(214,18,42,.45)}}
+.stateSeg{display:flex;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.stateSeg button{flex:1;padding:9px 6px;border-radius:9px;font-weight:600;font-size:13px;color:var(--muted)}
+.stateSeg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.stateSeg button.on.everyday{color:#cfe0f2}.stateSeg button.on.journey{color:var(--journey)}.stateSeg button.on.sos{color:var(--sos)}
+
+.statGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat .k{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
+.stat .v{font-size:15px;font-weight:600;margin-top:2px}
+
+/* lists */
+.item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:none}
+.item .ava{width:38px;height:38px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;font-weight:700;flex:none}
+.item .name{font-weight:600}
+.item .meta{font-size:12px;color:var(--muted)}
+.tag{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:3px 7px;border-radius:6px}
+.tag.pending{background:rgba(246,183,60,.15);color:var(--warn)}
+.tag.accepted{background:rgba(46,204,113,.14);color:var(--ok)}
+.tag.sos{background:rgba(255,59,71,.16);color:var(--sos)}
+.tag.journey{background:rgba(163,113,247,.16);color:var(--journey)}
+
+/* incident cards */
+.inc{display:flex;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);align-items:flex-start;margin-bottom:10px;width:100%;text-align:left}
+.inc.live{border-color:rgba(255,59,71,.5);box-shadow:0 0 0 1px rgba(255,59,71,.25)}
+.inc .ic{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;flex:none;background:var(--surface2)}
+.inc.live .ic{background:rgba(255,59,71,.14)}
+.inc .ref{font-size:11px}
+.inc h4{margin:0 0 2px;font-size:15px}
+
+/* map */
+#mapHost,#opsMapHost{height:230px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#0e141b}
+.leaflet-container{background:#0e141b;font:inherit}
+.leaflet-control-attribution{background:rgba(10,14,20,.7)!important;color:#5b6b7c!important}
+.leaflet-control-attribution a{color:#7a8aa0!important}
+.pin{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4),0 0 14px rgba(255,59,71,.7)}
+.pin.sos{background:var(--sos)}.pin.journey{background:var(--journey)}.pin.ok{background:var(--accent)}
+
+/* timeline */
+.tl{list-style:none;margin:10px 0 0;padding:0;position:relative}
+.tl:before{content:"";position:absolute;left:7px;top:4px;bottom:4px;width:2px;background:var(--line)}
+.tl li{position:relative;padding:0 0 14px 26px}
+.tl li .tdot{position:absolute;left:0;top:3px;width:16px;height:16px;border-radius:50%;background:var(--surface2);border:2px solid var(--accent);z-index:1}
+.tl li.sos .tdot{border-color:var(--sos)}
+.tl li .tt{font-weight:600;font-size:13.5px}
+.tl li .tm{font-size:11.5px;color:var(--faint)}
+
+/* overlay */
+.sheet{position:fixed;inset:0;background:rgba(5,8,12,.6);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;z-index:50;max-width:720px;margin:0 auto}
+.sheet .panel{background:var(--surface);border:1px solid var(--line);border-radius:20px 20px 0 0;width:100%;max-height:92%;overflow-y:auto;padding:18px 16px calc(var(--safe-b) + 18px)}
+@media(min-width:560px){.sheet{align-items:center}.sheet .panel{border-radius:20px;max-width:520px}}
+.grab{width:40px;height:4px;border-radius:999px;background:var(--line);margin:0 auto 14px}
+
+/* banner */
+#alertBar{background:linear-gradient(90deg,#d61f2a,#ff3b47);color:#fff;padding:10px 14px;display:none;align-items:center;gap:10px;font-weight:600;font-size:13.5px}
+#alertBar.show{display:flex;animation:slideDown .3s}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+
+/* gate / onboarding */
+.center{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;gap:14px}
+.bigmk{width:64px;height:64px;border-radius:18px;background:radial-gradient(circle at 50% 35%,#5aa0ff,#1f6feb);display:grid;place-items:center;box-shadow:0 0 0 6px rgba(47,129,247,.14)}
+.bigmk svg{width:34px;height:34px}
+.label{font-size:12px;color:var(--muted);margin:2px 0 6px;font-weight:600}
+.opsNote{font-size:11.5px;color:var(--faint);background:var(--surface2);border:1px dashed var(--line);border-radius:10px;padding:8px 10px;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="alertBar"></div>
+
+  <!-- GATE -->
+  <section id="gate" class="center">
+    <div class="bigmk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
+    <div><strong style="font-size:20px">Beacon</strong><div class="muted small">Consent-based personal safety</div></div>
+    <div class="muted small" id="gateMsg" style="max-width:300px">Checking your session…</div>
+  </section>
+
+  <!-- ONBOARDING -->
+  <section id="onboard" class="center hidden">
+    <div class="bigmk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
+    <div><strong style="font-size:20px">Welcome to Beacon</strong><div class="muted small">Set up your safety profile</div></div>
+    <div class="col" style="width:100%;max-width:340px;margin-top:6px">
+      <div><div class="label" style="text-align:left">Your name</div><input id="obName" placeholder="e.g. Wale K." autocomplete="name"></div>
+      <div><div class="label" style="text-align:left">Phone (shown to your circle)</div><input id="obPhone" placeholder="+234…" inputmode="tel"></div>
+      <div><div class="label" style="text-align:left">Email (for alerts)</div><input id="obEmail" placeholder="you@email.com" inputmode="email" autocomplete="email"></div>
+      <button class="btn" id="obSave">Create my profile</button>
+      <div class="opsNote">Your location is never shared with anyone until you add a trusted contact and turn on a safety state. You stay in control.</div>
+    </div>
+  </section>
+
+  <!-- MAIN -->
+  <div id="shell" class="hidden" style="display:flex;flex-direction:column;height:100%">
+    <header>
+      <div class="logo"><span class="mk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></span>Beacon</div>
+      <div class="who"><span class="pill" id="connPill"><span class="dot" id="connDot"></span><span id="connTxt">Live</span></span><span class="avatar" id="meAva">?</span></div>
+    </header>
+
+    <main>
+      <!-- HOME -->
+      <section class="view active" id="v-home">
+        <div class="sosWrap">
+          <button class="sosBtn" id="sosBtn">SOS<small id="sosHint">press &amp; hold</small></button>
+        </div>
+        <div class="stateSeg" id="stateSeg" style="margin:14px 0">
+          <button data-state="everyday" class="on everyday">Everyday</button>
+          <button data-state="journey">Journey</button>
+          <button data-state="sos">SOS</button>
+        </div>
+        <div class="card">
+          <div class="row"><strong id="stateTitle">Everyday mode</strong><span class="sp"></span><span class="pill" id="statePill"><span class="dot ok" id="stateDot"></span><span id="stateName">Dormant</span></span></div>
+          <div class="muted small" id="stateDesc" style="margin-top:6px">Low-power safety context. No active location sharing until you start a journey or trigger SOS.</div>
+          <div class="statGrid" style="margin-top:14px">
+            <div class="stat"><div class="k">Location fix</div><div class="v" id="stFix">—</div></div>
+            <div class="stat"><div class="k">Accuracy</div><div class="v" id="stAcc">—</div></div>
+            <div class="stat"><div class="k">Battery</div><div class="v" id="stBat">—</div></div>
+            <div class="stat"><div class="k">Network</div><div class="v" id="stNet">—</div></div>
+          </div>
+        </div>
+        <div class="card hidden" id="journeyCard">
+          <strong>Active journey</strong>
+          <div class="muted small" id="journeyInfo" style="margin-top:4px"></div>
+          <div class="row" style="margin-top:12px"><button class="btn sec sm" id="checkInBtn">I'm safe — check in</button><button class="btn ghost sm" id="endJourneyBtn">End journey</button></div>
+        </div>
+        <button class="btn sec" id="startJourneyBtn" style="margin-top:12px">Start a protected journey</button>
+      </section>
+
+      <!-- CIRCLE -->
+      <section class="view" id="v-circle">
+        <h2 class="title">Safety Circle</h2>
+        <p class="sub">Trusted contacts are alerted the moment you trigger SOS. Membership is double opt-in and revocable.</p>
+        <div class="card" id="pendingInBox" style="display:none"></div>
+        <div class="card">
+          <div class="row"><strong>My trusted contacts</strong><span class="sp"></span><span class="muted small" id="circleCount"></span></div>
+          <div id="circleList" style="margin-top:8px"></div>
+          <button class="btn" id="inviteBtn" style="margin-top:14px">Invite a trusted contact</button>
+        </div>
+        <div class="card">
+          <strong>I'm protecting</strong>
+          <div class="muted small" style="margin-top:2px">People who've added you to their circle.</div>
+          <div id="protectingList" style="margin-top:8px"></div>
+        </div>
+      </section>
+
+      <!-- ALERTS -->
+      <section class="view" id="v-alerts">
+        <h2 class="title">Alerts &amp; Incidents</h2>
+        <p class="sub">Live incidents involving you — as the person in need, or as a trusted contact.</p>
+        <div id="alertsList"></div>
+      </section>
+
+      <!-- OPS -->
+      <section class="view" id="v-ops">
+        <h2 class="title">Safety Operations Console</h2>
+        <p class="sub">Responder view. Triage, classify, document and close incidents. Every action is audited.</p>
+        <div class="row" style="margin-bottom:12px">
+          <span class="pill"><span class="dot sos"></span><b id="opsLive">0</b>&nbsp;live</span>
+          <span class="pill"><span class="dot"></span><b id="opsTotal">0</b>&nbsp;total</span>
+          <span class="sp"></span>
+          <span class="muted small">Operator: <b id="opName">you</b></span>
+        </div>
+        <div id="opsList"></div>
+      </section>
+    </main>
+
+    <nav id="nav">
+      <button data-view="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l8-8 8 8M6 10v9a1 1 0 001 1h10a1 1 0 001-1v-9"/></svg>Home</button>
+      <button data-view="circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0111 0M16 6.2a3 3 0 010 5.6M18 19a5.2 5.2 0 00-3-4.7"/></svg>Circle</button>
+      <button data-view="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 01-3.4 0"/></svg>Alerts<span class="badge hidden" id="alertsBadge">0</span></button>
+      <button data-view="ops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M7 20h10"/></svg>Ops</button>
+    </nav>
+  </div>
+
+  <!-- SHEET -->
+  <div id="sheet" class="sheet hidden"><div class="panel" id="sheetPanel"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+"use strict";
+(function(){
+// ===== CONFIG =====
+const SB_URL="https://ngikudxuhbmkfgskezax.supabase.co";
+const SB_KEY="sb_publishable_28740K2imbf0dV5IY2PPgw_VN-Q1snZ";
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+
+// ===== helpers =====
+const $=s=>document.querySelector(s), el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.textContent=h;return e;};
+const esc=s=>String(s==null?"":s);
+const now=()=>Date.now();
+const ms=t=>t?(typeof t==="number"?t:Date.parse(t)):0;
+const refCode=()=>"BCN-"+now().toString(36).toUpperCase().slice(-5)+"-"+Math.random().toString(36).slice(2,5).toUpperCase();
+function ago(ts){ts=ms(ts);if(!ts)return"—";const s=Math.round((now()-ts)/1000);if(s<5)return"just now";if(s<60)return s+"s ago";const m=Math.floor(s/60);if(m<60)return m+"m ago";const h=Math.floor(m/60);return h+"h ago";}
+function clock(ts){return new Date(ms(ts)).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});}
+function initials(n){n=(n||"").trim();if(!n)return"?";const p=n.split(/\s+/);return(p[0][0]+(p[1]?p[1][0]:"")).toUpperCase();}
+function toast(msg){const b=$("#alertBar");b.textContent=msg;b.classList.add("show");clearTimeout(b._t);b._t=setTimeout(()=>b.classList.remove("show"),4600);}
+
+// ===== state =====
+let UID=null, myProfile=null, myState="everyday", myLoc=null, lastPushAt=0, pushingLoc=false;
+let battery=null, journey=null, armTimer=null, bootResolved=false, readyOnce=false;
+const profiles=new Map(), memberships=new Map(), locations=new Map(), incidents=new Map(), eventsByInc=new Map();
+let currentView="home", sheetMap=null, sheetOpenId=null;
+const STATE_META={
+  everyday:{name:"Dormant",dot:"ok",title:"Everyday mode",desc:"Low-power safety context. No active location sharing until you start a journey or trigger SOS."},
+  journey:{name:"Journey active",dot:"journey",title:"Journey mode",desc:"Your live location and trail are shared with your trusted circle for the duration of this trip."},
+  sos:{name:"EMERGENCY",dot:"sos",title:"SOS active",desc:"Maximum sampling. Your circle has been alerted and an incident is live in the operations console."}
+};
+
+// ===== boot =====
+async function boot(){
+  $("#gateMsg").textContent="Connecting…";
+  let session=null;
+  try{ const r=await sb.auth.getSession(); session=r.data.session; }catch(e){}
+  if(!session){
+    const {data,error}=await sb.auth.signInAnonymously();
+    if(error){
+      $("#gateMsg").innerHTML = /disabled|anonymous/i.test(error.message)
+        ? "Setup step needed: enable <b>Anonymous sign-ins</b> in Supabase → Authentication → Providers, then reload."
+        : "Couldn't start a session: "+esc(error.message);
+      return;
+    }
+    session=data.session;
+  }
+  UID=session.user.id;
+  await Promise.all([refresh("profiles"),refresh("memberships"),refresh("locations"),refresh("incidents"),refresh("events")]);
+  setupRealtime();
+  myProfile=profiles.get(UID)||null;
+  if(myProfile){ enterApp(); } else { $("#gate").classList.add("hidden"); $("#onboard").classList.remove("hidden"); }
+  readyOnce=true;
+}
+boot();
+
+// ===== data layer =====
+async function refresh(t){
+  if(t==="profiles"){ const {data}=await sb.from("profiles").select("*"); profiles.clear(); (data||[]).forEach(r=>profiles.set(r.id,r)); return; }
+  if(t==="memberships"){ const {data}=await sb.from("memberships").select("*"); memberships.clear(); (data||[]).forEach(r=>memberships.set(r.id,{id:r.id,ownerUid:r.owner_id,contactUid:r.contact_id,status:r.status,order:r.ord})); return; }
+  if(t==="locations"){ const {data}=await sb.from("locations").select("*"); locations.clear(); (data||[]).forEach(r=>locations.set(r.id,{uid:r.id,name:r.name,state:r.state,lat:r.lat,lng:r.lng,accuracy:r.accuracy,battery:r.battery,charging:r.charging,online:r.online,journey:r.journey,ts:ms(r.ts)})); return; }
+  if(t==="incidents"){ const {data}=await sb.from("incidents").select("*"); incidents.clear(); (data||[]).forEach(r=>incidents.set(r.id,normInc(r))); attachEvents(); return; }
+  if(t==="events"){ const {data}=await sb.from("incident_events").select("*").order("ts",{ascending:true}); eventsByInc.clear(); (data||[]).forEach(e=>{ const a=eventsByInc.get(e.incident_id)||[]; a.push({ts:ms(e.ts),actorUid:e.actor_id,actorName:e.actor_name,kind:e.kind,detail:e.detail}); eventsByInc.set(e.incident_id,a); }); attachEvents(); return; }
+}
+function normInc(r){ return {id:r.id,ref:r.ref,ownerUid:r.owner_id,ownerName:r.owner_name,type:r.type,state:r.state,classification:r.classification,trigger:r.trigger,duress:r.duress,lastLoc:r.last_loc,operatorUid:r.operator_id,operatorName:r.operator_name,createdAt:ms(r.created_at),updatedAt:ms(r.updated_at),events:eventsByInc.get(r.id)||[]}; }
+function attachEvents(){ incidents.forEach(i=>{ i.events=eventsByInc.get(i.id)||[]; }); }
+
+let rtTimers={};
+function debRefresh(t,extra){ clearTimeout(rtTimers[t]); rtTimers[t]=setTimeout(async()=>{ await refresh(t); if(extra)await refresh(extra); if(t==="profiles"&&!myProfile){ myProfile=profiles.get(UID)||null; } render(); updateBadges(); },250); }
+function setupRealtime(){
+  sb.channel("beacon-rt")
+    .on("postgres_changes",{event:"*",schema:"public",table:"locations"},()=>debRefresh("locations"))
+    .on("postgres_changes",{event:"*",schema:"public",table:"incidents"},p=>{ const live=liveForMe().length; debRefresh("incidents"); if(p.eventType==="INSERT")setTimeout(()=>detectNewAlert(live),400); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"incident_events"},()=>debRefresh("events"))
+    .on("postgres_changes",{event:"*",schema:"public",table:"memberships"},()=>debRefresh("memberships"))
+    .on("postgres_changes",{event:"*",schema:"public",table:"profiles"},()=>debRefresh("profiles"))
+    .subscribe();
+}
+
+// ===== onboarding =====
+$("#obSave").onclick=async()=>{
+  const name=$("#obName").value.trim(); if(!name){$("#obName").focus();return;}
+  const phone=$("#obPhone").value.trim(), email=($("#obEmail")?$("#obEmail").value.trim():"");
+  const row={id:UID,name,phone,email};
+  const {error}=await sb.from("profiles").upsert(row);
+  if(error){ toast("Couldn't save profile: "+error.message); return; }
+  myProfile={id:UID,name,phone,email}; profiles.set(UID,myProfile); enterApp();
+};
+function enterApp(){
+  $("#gate").classList.add("hidden"); $("#onboard").classList.add("hidden"); $("#shell").classList.remove("hidden");
+  $("#meAva").textContent=initials(myProfile.name); $("#opName").textContent=myProfile.name;
+  startGeo(); initBattery(); watchConn(); checkInviteParam(); requestNotif(); unlockAudio();
+  setInterval(tickFresh,1000); setInterval(checkJourneyOverdue,5000);
+  render();
+}
+
+// ===== geolocation =====
+function startGeo(){
+  if(!navigator.geolocation){$("#stFix").textContent="no GPS";return;}
+  navigator.geolocation.watchPosition(p=>{ myLoc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy||0),ts:now()}; maybePush(); paintStats(); },
+    err=>{$("#stFix").textContent=err.code===1?"permission off":"unavailable";},
+    {enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+}
+function initBattery(){ if(navigator.getBattery){navigator.getBattery().then(b=>{battery=b;const u=()=>paintStats();b.addEventListener("levelchange",u);b.addEventListener("chargingchange",u);paintStats();});} }
+function watchConn(){ const u=()=>{const on=navigator.onLine;$("#connDot").className="dot "+(on?"ok":"warn");$("#connTxt").textContent=on?"Live":"Offline";paintStats();};addEventListener("online",u);addEventListener("offline",u);u(); }
+function sampleMs(){return myState==="sos"?4000:myState==="journey"?6000:60000;}
+async function maybePush(force){
+  if(!myLoc||pushingLoc)return;
+  const share=myState!=="everyday", interval=sampleMs();
+  if(!force&&(now()-lastPushAt)<interval)return;
+  pushingLoc=true;
+  const row={id:UID,name:myProfile.name,state:myState,ts:new Date(myLoc.ts).toISOString(),
+    lat:share?myLoc.lat:null,lng:share?myLoc.lng:null,accuracy:share?myLoc.accuracy:null,
+    battery:battery?Math.round(battery.level*100):null,charging:battery?battery.charging:null,online:navigator.onLine,
+    journey:(myState==="journey"&&journey)?journey:null,updated_at:new Date().toISOString()};
+  const {error}=await sb.from("locations").upsert(row); if(!error)lastPushAt=now();
+  pushingLoc=false;
+}
+function paintStats(){
+  if(myLoc){$("#stFix").textContent=ago(myLoc.ts);$("#stAcc").textContent=myLoc.accuracy?("±"+myLoc.accuracy+" m"):"—";}
+  $("#stBat").textContent=battery?(Math.round(battery.level*100)+"%"+(battery.charging?" ⚡":"")):"—";
+  $("#stNet").textContent=navigator.onLine?"Online":"Offline";
+}
+function tickFresh(){ if(myLoc)$("#stFix").textContent=ago(myLoc.ts); if(currentView==="ops"||currentView==="alerts")render(); }
+
+// ===== safety state =====
+async function setState(s){ if(s===myState&&s!=="sos")return; if(s==="sos")return triggerSOS(false); myState=s; if(s!=="journey")journey=null; paintState(); await maybePush(true); render(); }
+function paintState(){
+  const m=STATE_META[myState];
+  $("#stateTitle").textContent=m.title;$("#stateName").textContent=m.name;$("#stateDot").className="dot "+m.dot;$("#stateDesc").textContent=m.desc;
+  document.querySelectorAll("#stateSeg button").forEach(b=>{const on=b.dataset.state===myState;b.className=(on?"on "+myState:"");});
+  $("#journeyCard").classList.toggle("hidden",!(myState==="journey"&&journey));
+  $("#startJourneyBtn").classList.toggle("hidden",myState==="journey");
+  if(journey){const left=Math.round((journey.checkInDueTs-now())/60000);$("#journeyInfo").innerHTML="To <b>"+esc(journey.dest)+"</b> · check-in due in "+(left>0?left+" min":"<span style='color:var(--warn)'>overdue</span>");}
+}
+
+// ===== SOS =====
+function armSOS(){$("#sosBtn").classList.add("armed");$("#sosHint").textContent="release to cancel";armTimer=setTimeout(()=>triggerSOS(false),900);}
+function disarmSOS(){clearTimeout(armTimer);$("#sosBtn").classList.remove("armed");$("#sosHint").textContent="press & hold";}
+$("#sosBtn").addEventListener("mousedown",armSOS);$("#sosBtn").addEventListener("touchstart",e=>{e.preventDefault();armSOS();},{passive:false});
+["mouseup","mouseleave","touchend","touchcancel"].forEach(ev=>$("#sosBtn").addEventListener(ev,disarmSOS));
+async function triggerSOS(discreet){
+  disarmSOS();
+  const existing=liveOwnIncident(); if(myState==="sos"&&existing)return openSheet(existing.id);
+  myState="sos"; paintState();
+  const loc=myLoc?{lat:myLoc.lat,lng:myLoc.lng,accuracy:myLoc.accuracy,ts:myLoc.ts}:null;
+  const id="inc_"+now().toString(36)+Math.random().toString(36).slice(2,5);
+  const row={id,ref:refCode(),owner_id:UID,owner_name:myProfile.name,type:"sos",state:"alerting",trigger:discreet?"discreet":"button",duress:false,last_loc:loc};
+  const {error}=await sb.from("incidents").insert(row);
+  if(error){ toast("SOS save failed: "+error.message); return; }
+  await sb.from("incident_events").insert([
+    {incident_id:id,actor_id:UID,actor_name:myProfile.name,kind:"created",detail:"SOS triggered"+(discreet?" (discreet)":"")},
+    {incident_id:id,actor_id:UID,actor_name:myProfile.name,kind:"alerting",detail:"Trusted circle alerting started"}
+  ]);
+  incidents.set(id,normInc(Object.assign({created_at:new Date().toISOString(),updated_at:new Date().toISOString()},row)));
+  await maybePush(true);
+  notify(id);
+  await refresh("incidents"); await refresh("events");
+  render(); switchView("alerts"); openSheet(id);
+  toast("SOS sent — alerting your circle.");
+}
+function liveOwnIncident(){return [...incidents.values()].find(i=>i.ownerUid===UID&&["alerting","verification","verified","escalated"].includes(i.state));}
+
+async function notify(incidentId){ try{ await sb.functions.invoke("notify",{body:{incident_id:incidentId}}); }catch(e){ /* function not deployed yet — in-app + realtime still work */ } }
+
+async function appendEvent(id,kind,detail,patch){
+  const inc=incidents.get(id); if(!inc)return;
+  await sb.from("incident_events").insert({incident_id:id,actor_id:UID,actor_name:(myProfile?myProfile.name:"system"),kind,detail});
+  if(patch){ const up={}; if(patch.state)up.state=patch.state; if(patch.classification)up.classification=patch.classification; if(patch.duress!=null)up.duress=patch.duress; up.updated_at=new Date().toISOString(); await sb.from("incidents").update(up).eq("id",id); }
+  await refresh("events"); await refresh("incidents"); render();
+}
+async function claimOp(id){ const i=incidents.get(id); if(i&&!i.operatorUid){ await sb.from("incidents").update({operator_id:UID,operator_name:myProfile.name}).eq("id",id); } }
+
+async function cancelMyIncident(id){
+  openSheetCustom(panel=>{
+    panel.appendChild(el("div","grab")); panel.appendChild(el("h2","title","Cancel emergency"));
+    panel.appendChild(el("p","sub","Enter your 4-digit safety PIN to stand down. Under duress? Entering 0000 appears to cancel but keeps responders alerted."));
+    const inp=el("input");inp.inputMode="numeric";inp.maxLength=4;inp.placeholder="PIN";panel.appendChild(inp);
+    const b=el("button","btn","Confirm cancel");b.style.marginTop="12px";
+    b.onclick=async()=>{ const pin=inp.value.trim();
+      if(pin==="0000"){ await appendEvent(id,"duress","Duress cancel entered — alert sustained",{duress:true}); myState="sos";paintState();closeSheet();toast("Stood down.");return; }
+      myState="everyday";journey=null;paintState();await maybePush(true);
+      await appendEvent(id,"cancelled","User cancelled (no duress)",{state:"cancelled"});
+      closeSheet();switchView("home");toast("Emergency cancelled.");
+    };
+    panel.appendChild(b);
+  });
+}
+
+// ===== journey =====
+$("#startJourneyBtn").onclick=()=>{
+  openSheetCustom(panel=>{
+    panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Start a protected journey"));
+    panel.appendChild(el("p","sub","Your circle sees your live trail until you arrive. Miss your check-in and an incident is raised automatically."));
+    const d=el("div","label","Destination");const di=el("input");di.placeholder="e.g. Home, Lekki";
+    const t=el("div","label","Expected arrival (minutes)");t.style.marginTop="10px";const ti=el("input");ti.type="number";ti.value="30";ti.inputMode="numeric";
+    panel.append(d,di,t,ti);
+    const b=el("button","btn","Begin journey");b.style.marginTop="14px";
+    b.onclick=async()=>{const dest=di.value.trim()||"destination";const mins=Math.max(1,parseInt(ti.value)||30);journey={dest,startTs:now(),etaTs:now()+mins*60000,checkInDueTs:now()+mins*60000};myState="journey";paintState();await maybePush(true);closeSheet();switchView("home");toast("Journey started. Stay safe.");};
+    panel.appendChild(b);
+  });
+};
+$("#checkInBtn").onclick=async()=>{if(!journey)return;journey.checkInDueTs=now()+20*60000;paintState();await maybePush(true);toast("Checked in. Timer extended 20 min.");};
+$("#endJourneyBtn").onclick=async()=>{journey=null;myState="everyday";paintState();await maybePush(true);toast("Journey ended safely.");};
+let overdueRaised={};
+async function checkJourneyOverdue(){
+  if(myState==="journey"&&journey&&now()>journey.checkInDueTs){
+    const key="ovd_"+UID.slice(0,8)+"_"+journey.startTs;
+    if(overdueRaised[key])return; overdueRaised[key]=true;
+    const loc=myLoc?{lat:myLoc.lat,lng:myLoc.lng,accuracy:myLoc.accuracy,ts:myLoc.ts}:null;
+    const row={id:key,ref:refCode(),owner_id:UID,owner_name:myProfile.name,type:"journey_overdue",state:"alerting",trigger:"missed check-in",duress:false,last_loc:loc};
+    const {error}=await sb.from("incidents").insert(row); if(error)return;
+    await sb.from("incident_events").insert([
+      {incident_id:key,actor_id:UID,actor_name:myProfile.name,kind:"created",detail:"Missed check-in on journey to "+journey.dest},
+      {incident_id:key,actor_id:UID,actor_name:myProfile.name,kind:"alerting",detail:"Circle alerting started"}]);
+    notify(key); await refresh("incidents"); await refresh("events");
+    toast("Missed check-in — incident raised."); render(); updateBadges();
+  }
+}
+
+// ===== circle / invites =====
+function checkInviteParam(){
+  const code=new URL(location.href).searchParams.get("invite"); if(!code)return;
+  sb.from("invites").select("*").eq("code",code).maybeSingle().then(({data:inv})=>{
+    if(!inv)return; if(inv.owner_id===UID){toast("That's your own invite link.");return;}
+    openSheetCustom(panel=>{
+      panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Join a Safety Circle"));
+      const who=profiles.get(inv.owner_id);
+      panel.appendChild(el("p","sub",(who?who.name:(inv.owner_name||"Someone"))+" invited you to be a trusted safety contact. You'll be alerted if they trigger an emergency."));
+      const b=el("button","btn","Accept — I'll be their contact");
+      b.onclick=async()=>{ const mid="m_"+inv.owner_id.slice(0,8)+"_"+UID.slice(0,8);
+        const {error}=await sb.from("memberships").upsert({id:mid,owner_id:inv.owner_id,contact_id:UID,status:"accepted",ord:1});
+        if(error){toast("Accept failed: "+error.message);return;}
+        await refresh("memberships"); closeSheet(); switchView("circle"); toast("You're now a trusted contact."); history.replaceState({},"",location.pathname);
+      };
+      const c=el("button","btn ghost","Not now");c.style.marginTop="8px";c.onclick=()=>{closeSheet();history.replaceState({},"",location.pathname);};
+      panel.append(b,c);
+    });
+  });
+}
+$("#inviteBtn").onclick=async()=>{
+  const code=Math.random().toString(36).slice(2,9);
+  const {error}=await sb.from("invites").insert({code,owner_id:UID,owner_name:myProfile.name});
+  if(error){toast("Couldn't create invite: "+error.message);return;}
+  const link=location.origin+location.pathname+"?invite="+code;
+  openSheetCustom(panel=>{
+    panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Invite a trusted contact"));
+    panel.appendChild(el("p","sub","Share this link. When they open it and accept, they join your Safety Circle. Works on any phone — no account needed."));
+    const box=el("div","card mono");box.style.wordBreak="break-all";box.style.fontSize="12.5px";box.textContent=link;panel.appendChild(box);
+    const b=el("button","btn","Copy link");b.style.marginTop="12px";b.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(link);toast("Link copied.");};panel.appendChild(b);
+    if(navigator.share){const s=el("button","btn sec","Share…");s.style.marginTop="8px";s.onclick=()=>navigator.share({title:"Beacon safety circle",text:"Be my trusted safety contact on Beacon",url:link});panel.appendChild(s);}
+  });
+};
+async function revoke(mid){ const {error}=await sb.from("memberships").delete().eq("id",mid); if(error){toast("Revoke failed: "+error.message);return;} await refresh("memberships"); render(); toast("Contact revoked — access ended."); }
+
+function myContacts(){return [...memberships.values()].filter(m=>m.ownerUid===UID&&m.status==="accepted");}
+function pendingToMe(){return [...memberships.values()].filter(m=>m.contactUid===UID&&m.status==="pending");}
+function iProtect(){return [...memberships.values()].filter(m=>m.contactUid===UID&&m.status==="accepted");}
+function incidentConcernsMe(i){ if(i.ownerUid===UID)return true; return [...memberships.values()].some(m=>m.ownerUid===i.ownerUid&&m.contactUid===UID&&m.status==="accepted"); }
+function liveForMe(){return [...incidents.values()].filter(i=>incidentConcernsMe(i)&&["alerting","verification","verified","escalated"].includes(i.state));}
+
+// ===== audible alarm + system notifications =====
+let audioCtx=null, sirenTimer=null, vibrateTimer=null, activeAlarmId=null;
+function unlockAudio(){ try{ if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==="suspended")audioCtx.resume(); }catch(e){} }
+["touchstart","mousedown","keydown"].forEach(ev=>addEventListener(ev,unlockAudio));
+function beep(freq,dur){ if(!audioCtx)return; const o=audioCtx.createOscillator(),g=audioCtx.createGain(); o.type="square"; o.frequency.value=freq; o.connect(g); g.connect(audioCtx.destination); const t=audioCtx.currentTime; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.5,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.03); }
+function sirenTick(){ beep(900,0.22); setTimeout(()=>beep(640,0.22),240); }
+function requestNotif(){ try{ if("Notification"in window&&Notification.permission==="default")Notification.requestPermission(); }catch(e){} }
+function fireNotif(inc){ try{ if("Notification"in window&&Notification.permission==="granted"){ const n=new Notification("🚨 "+(inc.ownerName||"A contact")+" triggered SOS",{body:"Tap to view their live location in Beacon.",tag:inc.id,requireInteraction:true}); n.onclick=()=>{ try{window.focus();}catch(e){} openSheet(inc.id); stopAlarm(); n.close(); }; } }catch(e){} }
+function startAlarm(inc){ if(activeAlarmId)return; activeAlarmId=inc.id; unlockAudio(); sirenTick(); sirenTimer=setInterval(sirenTick,700); if(navigator.vibrate){ navigator.vibrate([500,200,500,200,500]); vibrateTimer=setInterval(()=>navigator.vibrate([500,200,500]),1600); } showAlarmBar(inc); fireNotif(inc); }
+function stopAlarm(){ activeAlarmId=null; clearInterval(sirenTimer); sirenTimer=null; clearInterval(vibrateTimer); vibrateTimer=null; try{if(navigator.vibrate)navigator.vibrate(0);}catch(e){} hideAlarmBar(); }
+function escBar(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+function showAlarmBar(inc){
+  let bar=document.getElementById("alarmBar");
+  if(!bar){ bar=document.createElement("div"); bar.id="alarmBar";
+    bar.style.cssText="position:fixed;left:0;right:0;top:0;z-index:60;max-width:720px;margin:0 auto;background:linear-gradient(90deg,#c1121f,#ff3b47);color:#fff;padding:calc(var(--safe-t) + 12px) 14px 12px;display:flex;align-items:center;gap:10px;font-weight:700;box-shadow:0 6px 24px rgba(214,18,42,.5);animation:pulseBar 1s infinite";
+    document.getElementById("app").appendChild(bar);
+    const st=document.createElement("style"); st.textContent="@keyframes pulseBar{0%,100%{opacity:1}50%{opacity:.76}}"; document.head.appendChild(st);
+  }
+  bar.innerHTML="";
+  const txt=document.createElement("div"); txt.style.flex="1"; txt.style.lineHeight="1.2"; txt.innerHTML="🚨 "+(inc.ownerName?escBar(inc.ownerName):"A contact")+"<div style='font-size:11px;font-weight:600;opacity:.9'>triggered an emergency — tap View</div>";
+  const view=document.createElement("button"); view.textContent="View"; view.style.cssText="background:#fff;color:#c1121f;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px";
+  view.onclick=()=>{ const id=activeAlarmId||inc.id; stopAlarm(); openSheet(id); };
+  const sil=document.createElement("button"); sil.textContent="Silence"; sil.style.cssText="background:rgba(255,255,255,.22);color:#fff;border-radius:10px;padding:9px 12px;font-weight:600;font-size:13px";
+  sil.onclick=()=>stopAlarm();
+  bar.append(txt,view,sil); bar.style.display="flex";
+}
+function hideAlarmBar(){ const bar=document.getElementById("alarmBar"); if(bar)bar.style.display="none"; }
+function checkAlarmState(){ if(!activeAlarmId)return; const i=incidents.get(activeAlarmId); if(!i||["resolved","cancelled"].includes(i.state))stopAlarm(); }
+
+// ===== alerts detection =====
+let seenIncidents=new Set();
+function detectNewAlert(){
+  [...incidents.values()].forEach(i=>{
+    if(seenIncidents.has(i.id))return; seenIncidents.add(i.id);
+    if(!readyOnce)return;
+    if(i.ownerUid!==UID&&incidentConcernsMe(i)&&i.state==="alerting"){ toast("🚨 "+(i.ownerName||"A contact")+" triggered SOS"); startAlarm(i); }
+  });
+}
+
+// ===== rendering =====
+function render(){ if(!myProfile)return;
+  if(currentView==="home"){paintState();paintStats();}
+  if(currentView==="circle")renderCircle();
+  if(currentView==="alerts")renderAlerts();
+  if(currentView==="ops")renderOps();
+  if(sheetOpenId)renderSheet(sheetOpenId);
+  checkAlarmState(); updateLiveMap();
+}
+function nameOf(uid){const p=profiles.get(uid);return p?p.name:"Unknown";}
+function phoneOf(uid){const p=profiles.get(uid);return p?(p.phone||p.email||""):"";}
+function mkAva(name){return el("div","ava",initials(name));}
+function stat(k,v){const d=el("div","stat");d.appendChild(el("div","k",k));d.appendChild(el("div","v",v));return d;}
+
+function renderCircle(){
+  const pend=pendingToMe(),pib=$("#pendingInBox");
+  pib.style.display=pend.length?"block":"none";pib.innerHTML="";
+  if(pend.length){pib.appendChild(el("strong",null,"Pending invitations"));pend.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));c.appendChild(el("div","meta","wants you as a contact"));row.appendChild(c);row.appendChild(el("div","sp"));const a=el("button","btn sm","Accept");a.onclick=async()=>{await sb.from("memberships").update({status:"accepted"}).eq("id",m.id);await refresh("memberships");render();};row.appendChild(a);pib.appendChild(row);});}
+  const list=$("#circleList");list.innerHTML="";const cs=myContacts();
+  $("#circleCount").textContent=cs.length+" trusted";
+  if(!cs.length)list.appendChild(el("div","muted small","No contacts yet. Invite someone you trust."));
+  cs.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.contactUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.contactUid)));c.appendChild(el("div","meta",phoneOf(m.contactUid)||"trusted contact"));row.appendChild(c);row.appendChild(el("div","sp"));row.appendChild(el("span","tag accepted","active"));const rb=el("button","btn ghost sm","Revoke");rb.style.marginLeft="8px";rb.onclick=()=>revoke(m.id);row.appendChild(rb);list.appendChild(row);});
+  const pl=$("#protectingList");pl.innerHTML="";const ip=iProtect();
+  if(!ip.length)pl.appendChild(el("div","muted small","You're not in anyone's circle yet."));
+  ip.forEach(m=>{const loc=locations.get(m.ownerUid);const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));let st="Everyday";if(loc&&loc.state==="sos")st="🚨 SOS";else if(loc&&loc.state==="journey")st="On a journey";c.appendChild(el("div","meta",st+(loc&&loc.ts?" · "+ago(loc.ts):"")));row.appendChild(c);row.appendChild(el("div","sp"));if(loc&&loc.state!=="everyday"&&loc.lat){const v=el("button","btn sec sm","View");v.onclick=()=>openWatch(m.ownerUid);row.appendChild(v);}pl.appendChild(row);});
+}
+function renderAlerts(){
+  const list=$("#alertsList");list.innerHTML="";
+  const mine=[...incidents.values()].filter(incidentConcernsMe).sort((a,b)=>b.createdAt-a.createdAt);
+  if(!mine.length){const c=el("div","card");c.appendChild(el("div","muted","No incidents involving you. When you or someone in your circle triggers SOS, it appears here instantly."));list.appendChild(c);return;}
+  mine.forEach(i=>list.appendChild(incCard(i)));
+}
+function renderOps(){
+  const all=[...incidents.values()].sort((a,b)=>b.createdAt-a.createdAt);
+  const live=all.filter(i=>["alerting","verification","verified","escalated"].includes(i.state));
+  $("#opsLive").textContent=live.length;$("#opsTotal").textContent=all.length;
+  const list=$("#opsList");list.innerHTML="";
+  if(!all.length){const c=el("div","card");c.appendChild(el("div","muted","No incidents yet. Trigger an SOS on the Home tab (or from another device) and it lands here in real time."));list.appendChild(c);return;}
+  all.forEach(i=>list.appendChild(incCard(i)));
+}
+const STATE_LABEL={alerting:"Alerting",verification:"Verification pending",verified:"Verified",escalated:"Escalated",resolved:"Resolved",cancelled:"Cancelled"};
+const CLASS_LABEL={test:"Test",accidental:"Accidental",unconfirmed:"Unconfirmed",credible:"Credible",critical:"Critical"};
+function incCard(i){
+  const live=!["resolved","cancelled"].includes(i.state);
+  const card=el("button","inc"+(live?" live":""));const ic=el("div","ic");ic.textContent=i.type==="sos"?"🚨":"⏱️";card.appendChild(ic);
+  const body=el("div");body.style.flex="1";
+  body.appendChild(el("h4",null,(i.type==="sos"?"SOS":"Missed check-in")+" · "+(i.ownerName||nameOf(i.ownerUid))));
+  body.appendChild(el("div","ref mono muted",i.ref));
+  const meta=el("div","row");meta.style.marginTop="6px";meta.style.flexWrap="wrap";
+  meta.appendChild(el("span","tag "+(i.type==="sos"?"sos":"journey"),STATE_LABEL[i.state]||i.state));
+  if(i.classification)meta.appendChild(el("span","pill small",CLASS_LABEL[i.classification]||i.classification));
+  if(i.duress)meta.appendChild(el("span","tag sos","DURESS"));
+  meta.appendChild(el("span","muted small",ago(i.createdAt)));
+  if(i.lastLoc)meta.appendChild(el("span","muted small","· fix "+ago(i.lastLoc.ts)));
+  body.appendChild(meta);card.appendChild(body);card.onclick=()=>openSheet(i.id);return card;
+}
+function updateBadges(){const n=liveForMe().length;const b=$("#alertsBadge");b.textContent=n;b.classList.toggle("hidden",n===0);}
+
+// ===== sheet =====
+function openSheet(id){if(id===activeAlarmId)stopAlarm();resetTrail();sheetOpenId=id;$("#sheet").classList.remove("hidden");renderSheet(id);}
+function openWatch(ownerUid){resetTrail();sheetOpenId="watch_"+ownerUid;$("#sheet").classList.remove("hidden");renderWatch(ownerUid);}
+function openSheetCustom(b){sheetOpenId=null;const p=$("#sheetPanel");p.innerHTML="";b(p);$("#sheet").classList.remove("hidden");}
+function closeSheet(){sheetOpenId=null;$("#sheet").classList.add("hidden");if(sheetMap){sheetMap.remove();sheetMap=null;}}
+$("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeSheet();});
+function renderWatch(ownerUid){
+  const p=$("#sheetPanel");p.innerHTML="";p.appendChild(el("div","grab"));p.appendChild(el("h2","title",nameOf(ownerUid)));
+  const loc=locations.get(ownerUid);
+  p.appendChild(el("p","sub",loc&&loc.state==="sos"?"🚨 In an active emergency":"On a protected journey"));
+  const host=el("div");host.id="mapHost";p.appendChild(host);
+  if(loc&&loc.lat)setTimeout(()=>drawMap("mapHost",[{lat:loc.lat,lng:loc.lng,kind:loc.state,label:nameOf(ownerUid)}]),40);
+  const g=el("div","statGrid");g.style.marginTop="12px";
+  g.appendChild(stat("Last fix",loc?ago(loc.ts):"—"));g.appendChild(stat("Accuracy",loc&&loc.accuracy?"±"+loc.accuracy+" m":"—"));
+  g.appendChild(stat("Battery",loc&&loc.battery!=null?loc.battery+"%":"—"));g.appendChild(stat("Network",loc?(loc.online?"Online":"Offline"):"—"));
+  p.appendChild(g);const c=el("button","btn ghost","Close");c.style.marginTop="14px";c.onclick=closeSheet;p.appendChild(c);
+}
+function renderSheet(id){
+  if(String(id).startsWith("watch_"))return;
+  const i=incidents.get(id);if(!i){closeSheet();return;}
+  const p=$("#sheetPanel");p.innerHTML="";p.appendChild(el("div","grab"));
+  const head=el("div","row");const hh=el("div");hh.appendChild(el("h2","title",i.type==="sos"?"SOS incident":"Missed check-in"));hh.appendChild(el("div","ref mono muted",i.ref));head.appendChild(hh);head.appendChild(el("div","sp"));head.appendChild(el("span","tag "+(i.type==="sos"?"sos":"journey"),STATE_LABEL[i.state]||i.state));p.appendChild(head);
+  p.appendChild(el("p","sub","Subject: "+(i.ownerName||nameOf(i.ownerUid))+" · "+(phoneOf(i.ownerUid)||"no contact")));
+  const host=el("div");host.id="mapHost";p.appendChild(host);
+  if(i.lastLoc&&i.lastLoc.lat)setTimeout(()=>drawMap("mapHost",[{lat:i.lastLoc.lat,lng:i.lastLoc.lng,kind:i.type==="sos"?"sos":"journey",label:i.ownerName}]),40);
+  else{const nb=el("div","card muted small","No location fix available for this incident yet.");nb.style.marginTop="10px";p.appendChild(nb);}
+  const g=el("div","statGrid");g.style.marginTop="12px";const L=i.lastLoc,loc=locations.get(i.ownerUid);
+  g.appendChild(stat("Location fix",L?ago(L.ts):"—"));g.appendChild(stat("Accuracy",L&&L.accuracy?"±"+L.accuracy+" m":"—"));
+  g.appendChild(stat("Battery",loc&&loc.battery!=null?loc.battery+"%":"—"));g.appendChild(stat("Trigger",i.trigger||"—"));p.appendChild(g);
+  if(currentView==="ops"){
+    const ops=el("div","card");ops.style.marginTop="12px";ops.appendChild(el("strong",null,"Operator actions"));
+    const cl=el("div","label","Classify");cl.style.marginTop="8px";ops.appendChild(cl);
+    const seg=el("div","stateSeg");["test","accidental","unconfirmed","credible","critical"].forEach(k=>{const b=el("button",(i.classification===k?"on":""),CLASS_LABEL[k]);b.style.fontSize="11px";b.onclick=async()=>{await claimOp(i.id);await appendEvent(i.id,"classified","Classified: "+CLASS_LABEL[k],{classification:k,state:i.state==="alerting"?"verification":i.state});};seg.appendChild(b);});ops.appendChild(seg);
+    const na=el("div","label","Verification note");na.style.marginTop="10px";ops.appendChild(na);const ni=el("input");ni.placeholder="e.g. Called subject, no answer…";ops.appendChild(ni);
+    const nb=el("button","btn sec sm","Add note");nb.style.marginTop="8px";nb.onclick=async()=>{if(!ni.value.trim())return;await claimOp(i.id);await appendEvent(i.id,"note",ni.value.trim());ni.value="";};ops.appendChild(nb);
+    const actions=el("div","row");actions.style.marginTop="12px";actions.style.flexWrap="wrap";
+    const ver=el("button","btn sec sm","Mark verified");ver.onclick=async()=>{await claimOp(i.id);await appendEvent(i.id,"verified","Operator verified incident",{state:"verified"});};
+    const esc2=el("button","btn sm","Escalate to responder");esc2.onclick=async()=>{await claimOp(i.id);await appendEvent(i.id,"escalated","Escalated to responder partner",{state:"escalated"});};
+    const res=el("button","btn ghost sm","Resolve");res.onclick=async()=>{await claimOp(i.id);await appendEvent(i.id,"resolved","Incident resolved by operator",{state:"resolved"});};
+    actions.append(ver,esc2,res);ops.appendChild(actions);p.appendChild(ops);
+  }
+  if(i.ownerUid===UID&&["alerting","verification","verified"].includes(i.state)){const cb=el("button","btn danger","Cancel this emergency");cb.style.marginTop="12px";cb.onclick=()=>cancelMyIncident(i.id);p.appendChild(cb);}
+  const tlc=el("div","card");tlc.style.marginTop="12px";tlc.appendChild(el("strong",null,"Audit timeline"));
+  const ul=el("ul","tl");(i.events||[]).slice().sort((a,b)=>b.ts-a.ts).forEach(e=>{const li=el("li",(e.kind==="created"||e.kind==="duress")?"sos":"");li.appendChild(el("span","tdot"));li.appendChild(el("div","tt",e.detail));li.appendChild(el("div","tm",clock(e.ts)+" · "+(e.actorName||"system")));ul.appendChild(li);});tlc.appendChild(ul);p.appendChild(tlc);
+  const c=el("button","btn ghost","Close");c.style.marginTop="14px";c.onclick=closeSheet;p.appendChild(c);
+}
+
+// ===== map =====
+let sheetMarkers=[], trailPts=[], trailLine=null;
+function resetTrail(){ trailPts=[]; if(trailLine){try{trailLine.remove();}catch(e){}trailLine=null;} }
+function drawMap(hostId,points){
+  const host=document.getElementById(hostId);if(!host||!window.L)return;
+  if(sheetMap){sheetMap.remove();sheetMap=null;}
+  sheetMarkers=[];
+  const p0=points[0];sheetMap=L.map(host,{zoomControl:true}).setView([p0.lat,p0.lng],16);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(sheetMap);
+  points.forEach(pt=>{const ic=L.divIcon({className:"",html:'<div class="pin '+(pt.kind==="sos"?"sos":pt.kind==="journey"?"journey":"ok")+'"></div>',iconSize:[18,18],iconAnchor:[9,9]});const mk=L.marker([pt.lat,pt.lng],{icon:ic}).addTo(sheetMap).bindPopup(esc(pt.label||"Location"));sheetMarkers.push(mk);});
+  if(points.length===1){ if(!trailPts.length)trailPts=[[points[0].lat,points[0].lng]]; if(trailPts.length>=2)trailLine=L.polyline(trailPts,{color:"#2f81f7",weight:4,opacity:.85,lineJoin:"round"}).addTo(sheetMap); }
+  setTimeout(()=>sheetMap.invalidateSize(),60);
+}
+// live-follow the subject's marker + extend the walked trail as data streams in
+function liveSubjectUid(){ if(!sheetOpenId)return null; const s=String(sheetOpenId); if(s.startsWith("watch_"))return s.slice(6); const i=incidents.get(s); return i?i.ownerUid:null; }
+function updateLiveMap(){
+  const uid=liveSubjectUid(); if(!uid||!sheetMap||!sheetMarkers[0])return;
+  const loc=locations.get(uid); if(!loc||loc.lat==null)return;
+  sheetMarkers[0].setLatLng([loc.lat,loc.lng]);
+  const last=trailPts[trailPts.length-1];
+  if(!last||last[0]!==loc.lat||last[1]!==loc.lng){
+    trailPts.push([loc.lat,loc.lng]); if(trailPts.length>600)trailPts.shift();
+    if(trailPts.length>=2){ if(!trailLine)trailLine=L.polyline(trailPts,{color:"#2f81f7",weight:4,opacity:.85,lineJoin:"round"}).addTo(sheetMap); else trailLine.setLatLngs(trailPts); }
+    try{sheetMap.panTo([loc.lat,loc.lng],{animate:true,duration:0.5});}catch(e){}
+  }
+  const fx=document.querySelector("#sheetPanel .stat .v"); if(fx)fx.textContent=ago(loc.ts);
+}
+
+// ===== nav =====
+function switchView(v){currentView=v;document.querySelectorAll(".view").forEach(s=>s.classList.remove("active"));$("#v-"+v).classList.add("active");document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));render();}
+document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>switchView(b.dataset.view));
+document.querySelectorAll("#stateSeg button").forEach(b=>b.onclick=()=>setState(b.dataset.state));
+})();
+
+</script>
+</body>
+</html>
