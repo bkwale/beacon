@@ -113,6 +113,7 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
 /* map */
 #mapHost,#opsMapHost{height:230px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#0e141b}
 .leaflet-container{background:#0e141b;font:inherit}
+.leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) brightness(.92) contrast(.92) saturate(.85)}
 .leaflet-control-attribution{background:rgba(10,14,20,.5)!important;color:#3c4653!important;font-size:9px!important;padding:0 4px!important}
 .leaflet-control-attribution a{color:#4f5e6e!important}
 .pin{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4),0 0 14px rgba(255,59,71,.7)}
@@ -688,7 +689,7 @@ function drawMap(hostId,points){
   if(sheetMap){sheetMap.remove();sheetMap=null;}
   sheetMarkers=[];
   const p0=points[0];sheetMap=L.map(host,{zoomControl:true,attributionControl:true}).setView([p0.lat,p0.lng],16);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{subdomains:"abcd",maxZoom:20,attribution:"© OSM © CARTO"}).addTo(sheetMap);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(sheetMap);
   points.forEach(pt=>{const kind=pt.kind==="sos"?"sos":pt.kind==="journey"?"journey":"ok";const ic=L.divIcon({className:"",html:'<div class="pinL '+kind+'"><span class="pulse"></span><span class="core"></span></div>',iconSize:[18,18],iconAnchor:[9,9]});const mk=L.marker([pt.lat,pt.lng],{icon:ic,zIndexOffset:1000}).addTo(sheetMap).bindPopup(esc(pt.label||"Location"));sheetMarkers.push(mk);});
   setTimeout(()=>{if(sheetMap)sheetMap.invalidateSize();},60);
 }
