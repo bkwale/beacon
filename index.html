@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Beacon</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Beacon">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
 <style>
 :root{
@@ -105,10 +113,18 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
 /* map */
 #mapHost,#opsMapHost{height:230px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#0e141b}
 .leaflet-container{background:#0e141b;font:inherit}
-.leaflet-control-attribution{background:rgba(10,14,20,.7)!important;color:#5b6b7c!important}
-.leaflet-control-attribution a{color:#7a8aa0!important}
+.leaflet-control-attribution{background:rgba(10,14,20,.5)!important;color:#3c4653!important;font-size:9px!important;padding:0 4px!important}
+.leaflet-control-attribution a{color:#4f5e6e!important}
 .pin{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.4),0 0 14px rgba(255,59,71,.7)}
 .pin.sos{background:var(--sos)}.pin.journey{background:var(--journey)}.pin.ok{background:var(--accent)}
+.pinL{position:relative;width:18px;height:18px}
+.pinL .core{position:absolute;inset:0;border-radius:50%;border:3px solid #fff;z-index:2}
+.pinL.ok .core{background:var(--accent);box-shadow:0 0 14px rgba(47,129,247,.95)}
+.pinL.journey .core{background:var(--journey);box-shadow:0 0 14px rgba(163,113,247,.95)}
+.pinL.sos .core{background:var(--sos);box-shadow:0 0 18px rgba(255,59,71,1)}
+.pinL .pulse{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;z-index:1;animation:ping 1.8s cubic-bezier(0,0,.2,1) infinite}
+.pinL.ok .pulse{background:rgba(47,129,247,.5)}.pinL.journey .pulse{background:rgba(163,113,247,.5)}.pinL.sos .pulse{background:rgba(255,59,71,.55)}
+@keyframes ping{0%{transform:scale(1);opacity:.7}100%{transform:scale(5);opacity:0}}
 
 /* timeline */
 .tl{list-style:none;margin:10px 0 0;padding:0;position:relative}
@@ -196,6 +212,7 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
           <div class="row" style="margin-top:12px"><button class="btn sec sm" id="checkInBtn">I'm safe — check in</button><button class="btn ghost sm" id="endJourneyBtn">End journey</button></div>
         </div>
         <button class="btn sec" id="startJourneyBtn" style="margin-top:12px">Start a protected journey</button>
+        <button class="btn ghost" id="myMapBtn" style="margin-top:10px">See my location &amp; trail</button>
       </section>
 
       <!-- CIRCLE -->
@@ -353,7 +370,7 @@ function startGeo(){
 }
 function initBattery(){ if(navigator.getBattery){navigator.getBattery().then(b=>{battery=b;const u=()=>paintStats();b.addEventListener("levelchange",u);b.addEventListener("chargingchange",u);paintStats();});} }
 function watchConn(){ const u=()=>{const on=navigator.onLine;$("#connDot").className="dot "+(on?"ok":"warn");$("#connTxt").textContent=on?"Live":"Offline";paintStats();};addEventListener("online",u);addEventListener("offline",u);u(); }
-function sampleMs(){return myState==="sos"?4000:myState==="journey"?10000:60000;}
+function sampleMs(){return myState==="sos"?4000:myState==="journey"?6000:60000;}
 async function maybePush(force){
   if(!myLoc||pushingLoc)return;
   const share=myState!=="everyday", interval=sampleMs();
@@ -363,7 +380,8 @@ async function maybePush(force){
     lat:share?myLoc.lat:null,lng:share?myLoc.lng:null,accuracy:share?myLoc.accuracy:null,
     battery:battery?Math.round(battery.level*100):null,charging:battery?battery.charging:null,online:navigator.onLine,
     journey:(myState==="journey"&&journey)?journey:null,updated_at:new Date().toISOString()};
-  const {error}=await sb.from("locations").upsert(row); if(!error)lastPushAt=now();
+  const {error}=await sb.from("locations").upsert(row);
+  if(!error){ lastPushAt=now(); if(share&&myLoc&&myLoc.lat!=null){ try{ await sb.from("breadcrumbs").insert({user_id:UID,lat:myLoc.lat,lng:myLoc.lng,accuracy:myLoc.accuracy,state:myState}); }catch(e){} } }
   pushingLoc=false;
 }
 function paintStats(){
@@ -555,12 +573,13 @@ function render(){ if(!myProfile)return;
   if(currentView==="alerts")renderAlerts();
   if(currentView==="ops")renderOps();
   if(sheetOpenId)renderSheet(sheetOpenId);
-  checkAlarmState();
+  checkAlarmState(); updateLiveMap();
 }
 function nameOf(uid){const p=profiles.get(uid);return p?p.name:"Unknown";}
 function phoneOf(uid){const p=profiles.get(uid);return p?(p.phone||p.email||""):"";}
 function mkAva(name){return el("div","ava",initials(name));}
 function stat(k,v){const d=el("div","stat");d.appendChild(el("div","k",k));d.appendChild(el("div","v",v));return d;}
+function statId(k,v,id){const d=stat(k,v);const vv=d.querySelector(".v");if(vv)vv.id=id;return d;}
 
 function renderCircle(){
   const pend=pendingToMe(),pib=$("#pendingInBox");
@@ -607,20 +626,23 @@ function incCard(i){
 function updateBadges(){const n=liveForMe().length;const b=$("#alertsBadge");b.textContent=n;b.classList.toggle("hidden",n===0);}
 
 // ===== sheet =====
-function openSheet(id){if(id===activeAlarmId)stopAlarm();sheetOpenId=id;$("#sheet").classList.remove("hidden");renderSheet(id);}
-function openWatch(ownerUid){sheetOpenId="watch_"+ownerUid;$("#sheet").classList.remove("hidden");renderWatch(ownerUid);}
+function openSheet(id){if(id===activeAlarmId)stopAlarm();resetTrail();sheetOpenId=id;$("#sheet").classList.remove("hidden");renderSheet(id);}
+function openWatch(ownerUid){resetTrail();sheetOpenId="watch_"+ownerUid;$("#sheet").classList.remove("hidden");renderWatch(ownerUid);}
 function openSheetCustom(b){sheetOpenId=null;const p=$("#sheetPanel");p.innerHTML="";b(p);$("#sheet").classList.remove("hidden");}
-function closeSheet(){sheetOpenId=null;$("#sheet").classList.add("hidden");if(sheetMap){sheetMap.remove();sheetMap=null;}}
+function closeSheet(){sheetOpenId=null;$("#sheet").classList.add("hidden");resetTrail();if(sheetMap){sheetMap.remove();sheetMap=null;}}
 $("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeSheet();});
 function renderWatch(ownerUid){
-  const p=$("#sheetPanel");p.innerHTML="";p.appendChild(el("div","grab"));p.appendChild(el("h2","title",nameOf(ownerUid)));
+  const self=ownerUid===UID;
+  const p=$("#sheetPanel");p.innerHTML="";p.appendChild(el("div","grab"));p.appendChild(el("h2","title",self?"Your location & trail":nameOf(ownerUid)));
   const loc=locations.get(ownerUid);
-  p.appendChild(el("p","sub",loc&&loc.state==="sos"?"🚨 In an active emergency":"On a protected journey"));
+  const subt=loc&&loc.state==="sos"?"🚨 In an active emergency":loc&&loc.state==="journey"?"On a protected journey":self?"Start a Journey or SOS to record your trail":"Not currently sharing";
+  p.appendChild(el("p","sub",subt));
   const host=el("div");host.id="mapHost";p.appendChild(host);
-  if(loc&&loc.lat)setTimeout(()=>drawMap("mapHost",[{lat:loc.lat,lng:loc.lng,kind:loc.state,label:nameOf(ownerUid)}]),40);
+  if(loc&&loc.lat!=null){ setTimeout(()=>{drawMap("mapHost",[{lat:loc.lat,lng:loc.lng,kind:loc.state||"ok",label:self?"You":nameOf(ownerUid)}]);loadTrail(ownerUid);},40); }
+  else{ const nb=el("div","card muted small",self?"No location yet. Tap Journey or SOS on Home, keep your screen on, and walk — your trail records here.":"No live location available.");nb.style.marginTop="10px";p.appendChild(nb); }
   const g=el("div","statGrid");g.style.marginTop="12px";
-  g.appendChild(stat("Last fix",loc?ago(loc.ts):"—"));g.appendChild(stat("Accuracy",loc&&loc.accuracy?"±"+loc.accuracy+" m":"—"));
-  g.appendChild(stat("Battery",loc&&loc.battery!=null?loc.battery+"%":"—"));g.appendChild(stat("Network",loc?(loc.online?"Online":"Offline"):"—"));
+  g.appendChild(statId("Distance walked","—","distStat"));g.appendChild(statId("Last fix",loc?ago(loc.ts):"—","fixStat"));
+  g.appendChild(stat("Accuracy",loc&&loc.accuracy?"±"+loc.accuracy+" m":"—"));g.appendChild(stat("Battery",loc&&loc.battery!=null?loc.battery+"%":"—"));
   p.appendChild(g);const c=el("button","btn ghost","Close");c.style.marginTop="14px";c.onclick=closeSheet;p.appendChild(c);
 }
 function renderSheet(id){
@@ -630,11 +652,11 @@ function renderSheet(id){
   const head=el("div","row");const hh=el("div");hh.appendChild(el("h2","title",i.type==="sos"?"SOS incident":"Missed check-in"));hh.appendChild(el("div","ref mono muted",i.ref));head.appendChild(hh);head.appendChild(el("div","sp"));head.appendChild(el("span","tag "+(i.type==="sos"?"sos":"journey"),STATE_LABEL[i.state]||i.state));p.appendChild(head);
   p.appendChild(el("p","sub","Subject: "+(i.ownerName||nameOf(i.ownerUid))+" · "+(phoneOf(i.ownerUid)||"no contact")));
   const host=el("div");host.id="mapHost";p.appendChild(host);
-  if(i.lastLoc&&i.lastLoc.lat)setTimeout(()=>drawMap("mapHost",[{lat:i.lastLoc.lat,lng:i.lastLoc.lng,kind:i.type==="sos"?"sos":"journey",label:i.ownerName}]),40);
+  if(i.lastLoc&&i.lastLoc.lat)setTimeout(()=>{drawMap("mapHost",[{lat:i.lastLoc.lat,lng:i.lastLoc.lng,kind:i.type==="sos"?"sos":"journey",label:i.ownerName}]);loadTrail(i.ownerUid);},40);
   else{const nb=el("div","card muted small","No location fix available for this incident yet.");nb.style.marginTop="10px";p.appendChild(nb);}
   const g=el("div","statGrid");g.style.marginTop="12px";const L=i.lastLoc,loc=locations.get(i.ownerUid);
-  g.appendChild(stat("Location fix",L?ago(L.ts):"—"));g.appendChild(stat("Accuracy",L&&L.accuracy?"±"+L.accuracy+" m":"—"));
-  g.appendChild(stat("Battery",loc&&loc.battery!=null?loc.battery+"%":"—"));g.appendChild(stat("Trigger",i.trigger||"—"));p.appendChild(g);
+  g.appendChild(statId("Distance","—","distStat"));g.appendChild(statId("Location fix",L?ago(L.ts):"—","fixStat"));
+  g.appendChild(stat("Accuracy",L&&L.accuracy?"±"+L.accuracy+" m":"—"));g.appendChild(stat("Trigger",i.trigger||"—"));p.appendChild(g);
   if(currentView==="ops"){
     const ops=el("div","card");ops.style.marginTop="12px";ops.appendChild(el("strong",null,"Operator actions"));
     const cl=el("div","label","Classify");cl.style.marginTop="8px";ops.appendChild(cl);
@@ -654,19 +676,63 @@ function renderSheet(id){
 }
 
 // ===== map =====
+let sheetMarkers=[], trailPts=[], trailLines=[], trailAnim=null;
+function resetTrail(){ trailPts=[]; trailLines.forEach(l=>{try{l.remove();}catch(e){}}); trailLines=[]; if(trailAnim){clearInterval(trailAnim);trailAnim=null;} }
 function drawMap(hostId,points){
   const host=document.getElementById(hostId);if(!host||!window.L)return;
   if(sheetMap){sheetMap.remove();sheetMap=null;}
-  const p0=points[0];sheetMap=L.map(host,{zoomControl:true}).setView([p0.lat,p0.lng],15);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(sheetMap);
-  points.forEach(pt=>{const ic=L.divIcon({className:"",html:'<div class="pin '+(pt.kind==="sos"?"sos":pt.kind==="journey"?"journey":"ok")+'"></div>',iconSize:[18,18],iconAnchor:[9,9]});L.marker([pt.lat,pt.lng],{icon:ic}).addTo(sheetMap).bindPopup(esc(pt.label||"Location"));});
-  setTimeout(()=>sheetMap.invalidateSize(),60);
+  sheetMarkers=[];
+  const p0=points[0];sheetMap=L.map(host,{zoomControl:true,attributionControl:true}).setView([p0.lat,p0.lng],16);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{subdomains:"abcd",maxZoom:20,attribution:"© OSM © CARTO"}).addTo(sheetMap);
+  points.forEach(pt=>{const kind=pt.kind==="sos"?"sos":pt.kind==="journey"?"journey":"ok";const ic=L.divIcon({className:"",html:'<div class="pinL '+kind+'"><span class="pulse"></span><span class="core"></span></div>',iconSize:[18,18],iconAnchor:[9,9]});const mk=L.marker([pt.lat,pt.lng],{icon:ic,zIndexOffset:1000}).addTo(sheetMap).bindPopup(esc(pt.label||"Location"));sheetMarkers.push(mk);});
+  setTimeout(()=>{if(sheetMap)sheetMap.invalidateSize();},60);
+}
+function liveSubjectUid(){ if(!sheetOpenId)return null; const s=String(sheetOpenId); if(s.startsWith("watch_"))return s.slice(6); const i=incidents.get(s); return i?i.ownerUid:null; }
+function trailColor(){ const uid=liveSubjectUid(); const loc=uid&&locations.get(uid); return loc&&loc.state==="sos"?"#ff3b47":loc&&loc.state==="journey"?"#a371f7":"#2f81f7"; }
+function renderTrailLines(){
+  if(!sheetMap||trailPts.length<2)return;
+  if(!trailLines.length){
+    const col=trailColor();
+    const glow=L.polyline(trailPts,{color:col,weight:12,opacity:.16,lineCap:"round",lineJoin:"round"}).addTo(sheetMap);
+    const base=L.polyline(trailPts,{color:col,weight:4.5,opacity:.95,lineCap:"round",lineJoin:"round"}).addTo(sheetMap);
+    const flow=L.polyline(trailPts,{color:"#ffffff",weight:2.5,opacity:.95,lineCap:"round",dashArray:"2 14"}).addTo(sheetMap);
+    trailLines=[glow,base,flow];
+    let off=0; trailAnim=setInterval(()=>{off-=1.4;try{flow.setStyle({dashOffset:String(off)});}catch(e){}},60);
+  } else { trailLines.forEach(l=>{try{l.setLatLngs(trailPts);}catch(e){}}); }
+}
+function haversine(a,b){const R=6371000,toR=x=>x*Math.PI/180;const dLat=toR(b[0]-a[0]),dLng=toR(b[1]-a[1]);const s=Math.sin(dLat/2)**2+Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(s));}
+function updateDistance(){ let d=0; for(let i=1;i<trailPts.length;i++)d+=haversine(trailPts[i-1],trailPts[i]); const e=document.getElementById("distStat"); if(e)e.textContent=d<1000?Math.round(d)+" m":(d/1000).toFixed(2)+" km"; }
+// load the saved breadcrumb path (last 3h) and draw it
+async function loadTrail(uid){
+  try{
+    const since=new Date(now()-3*3600*1000).toISOString();
+    const {data}=await sb.from("breadcrumbs").select("lat,lng,ts").eq("user_id",uid).gte("ts",since).order("ts",{ascending:true}).limit(800);
+    trailPts=(data||[]).map(r=>[r.lat,r.lng]);
+    const loc=locations.get(uid); if(loc&&loc.lat!=null){const last=trailPts[trailPts.length-1];if(!last||last[0]!==loc.lat||last[1]!==loc.lng)trailPts.push([loc.lat,loc.lng]);}
+    renderTrailLines(); updateDistance();
+    if(sheetMap&&trailPts.length>=2){try{sheetMap.fitBounds(L.latLngBounds(trailPts).pad(0.35));}catch(e){}}
+  }catch(e){}
+}
+// live-follow the subject's marker + extend the walked trail as data streams in
+function updateLiveMap(){
+  const uid=liveSubjectUid(); if(!uid||!sheetMap||!sheetMarkers[0])return;
+  const loc=locations.get(uid); if(!loc||loc.lat==null)return;
+  sheetMarkers[0].setLatLng([loc.lat,loc.lng]);
+  const last=trailPts[trailPts.length-1];
+  if(!last||last[0]!==loc.lat||last[1]!==loc.lng){
+    trailPts.push([loc.lat,loc.lng]); if(trailPts.length>800)trailPts.shift();
+    renderTrailLines(); updateDistance();
+    try{sheetMap.panTo([loc.lat,loc.lng],{animate:true,duration:0.6});}catch(e){}
+  }
+  const fx=document.getElementById("fixStat"); if(fx)fx.textContent=ago(loc.ts);
 }
 
 // ===== nav =====
 function switchView(v){currentView=v;document.querySelectorAll(".view").forEach(s=>s.classList.remove("active"));$("#v-"+v).classList.add("active");document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));render();}
 document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 document.querySelectorAll("#stateSeg button").forEach(b=>b.onclick=()=>setState(b.dataset.state));
+{const mb=document.getElementById("myMapBtn");if(mb)mb.onclick=()=>openWatch(UID);}
+if("serviceWorker" in navigator){ window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
 })();
 
 </script>
