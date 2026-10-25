@@ -1,0 +1,9 @@
+{
+  "appId": "org.techsanctum.beacon",
+  "appName": "Beacon",
+  "webDir": "www",
+  "server": {
+    "url": "https://beacon-six-woad.vercel.app",
+    "androidScheme": "https"
+  }
+}

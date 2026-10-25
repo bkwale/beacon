@@ -290,6 +290,9 @@ function toast(msg){const b=$("#alertBar");b.textContent=msg;b.classList.add("sh
 // ===== state =====
 let UID=null, myProfile=null, myState="everyday", myLoc=null, lastPushAt=0, pushingLoc=false;
 let battery=null, journey=null, armTimer=null, bootResolved=false, readyOnce=false;
+let bgWatcherId=null;
+const CAP=window.Capacitor;
+const isNative=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
 const profiles=new Map(), memberships=new Map(), locations=new Map(), incidents=new Map(), eventsByInc=new Map();
 let currentView="home", sheetMap=null, sheetOpenId=null;
 const STATE_META={
@@ -364,10 +367,30 @@ function enterApp(){
 
 // ===== geolocation =====
 function startGeo(){
+  if(isNative){ return; } // native uses the background watcher, started when sharing
   if(!navigator.geolocation){$("#stFix").textContent="no GPS";return;}
   navigator.geolocation.watchPosition(p=>{ myLoc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy||0),ts:now()}; maybePush(); paintStats(); },
     err=>{$("#stFix").textContent=err.code===1?"permission off":"unavailable";},
     {enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+}
+// ---- native (Capacitor APK) background geolocation ----
+function bgPlugin(){ try{ return CAP.registerPlugin?CAP.registerPlugin("BackgroundGeolocation"):(CAP.Plugins&&CAP.Plugins.BackgroundGeolocation); }catch(e){ return null; } }
+async function startNativeWatch(){
+  if(!isNative||bgWatcherId)return; const BG=bgPlugin(); if(!BG)return;
+  try{
+    bgWatcherId=await BG.addWatcher(
+      {backgroundMessage:"Sharing your location with your safety circle.",backgroundTitle:"Beacon is active",requestPermissions:true,stale:false,distanceFilter:8},
+      (location,error)=>{
+        if(error){ if(error.code==="NOT_AUTHORIZED")$("#stFix").textContent="permission off"; return; }
+        if(location){ myLoc={lat:location.latitude,lng:location.longitude,accuracy:Math.round(location.accuracy||0),ts:now()}; nativePush(); paintStats(); }
+      });
+  }catch(e){}
+}
+async function stopNativeWatch(){ if(!bgWatcherId)return; const BG=bgPlugin(); try{ await BG.removeWatcher({id:bgWatcherId}); }catch(e){} bgWatcherId=null; }
+async function nativePush(){
+  if(!myLoc||myState==="everyday")return;
+  const row={id:UID,name:myProfile.name,state:myState,ts:new Date(myLoc.ts).toISOString(),lat:myLoc.lat,lng:myLoc.lng,accuracy:myLoc.accuracy,battery:battery?Math.round(battery.level*100):null,charging:battery?battery.charging:null,online:navigator.onLine,journey:(myState==="journey"&&journey)?journey:null,updated_at:new Date().toISOString()};
+  try{ await sb.from("locations").upsert(row); await sb.from("breadcrumbs").insert({user_id:UID,lat:myLoc.lat,lng:myLoc.lng,accuracy:myLoc.accuracy,state:myState}); }catch(e){}
 }
 function initBattery(){ if(navigator.getBattery){navigator.getBattery().then(b=>{battery=b;const u=()=>paintStats();b.addEventListener("levelchange",u);b.addEventListener("chargingchange",u);paintStats();});} }
 function watchConn(){ const u=()=>{const on=navigator.onLine;$("#connDot").className="dot "+(on?"ok":"warn");$("#connTxt").textContent=on?"Live":"Offline";paintStats();};addEventListener("online",u);addEventListener("offline",u);u(); }
@@ -378,6 +401,7 @@ async function releaseWake(){ try{ if(wakeLock){ const w=wakeLock; wakeLock=null
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && (myState==="journey"||myState==="sos")) acquireWake(); });
 function sampleMs(){return myState==="sos"?4000:myState==="journey"?6000:60000;}
 async function maybePush(force){
+  if(isNative)return;
   if(!myLoc||pushingLoc)return;
   const share=myState!=="everyday", interval=sampleMs();
   if(!force&&(now()-lastPushAt)<interval)return;
@@ -398,7 +422,7 @@ function paintStats(){
 function tickFresh(){ if(myLoc)$("#stFix").textContent=ago(myLoc.ts); if(currentView==="ops"||currentView==="alerts")render(); }
 
 // ===== safety state =====
-async function setState(s){ if(s===myState&&s!=="sos")return; if(s==="sos")return triggerSOS(false); myState=s; if(s!=="journey")journey=null; if(s==="everyday")releaseWake();else acquireWake(); paintState(); await maybePush(true); render(); }
+async function setState(s){ if(s===myState&&s!=="sos")return; if(s==="sos")return triggerSOS(false); myState=s; if(s!=="journey")journey=null; if(isNative){ if(s==="everyday")stopNativeWatch();else startNativeWatch(); } else { if(s==="everyday")releaseWake();else acquireWake(); } paintState(); await maybePush(true); render(); }
 function paintState(){
   const m=STATE_META[myState];
   $("#stateTitle").textContent=m.title;$("#stateName").textContent=m.name;$("#stateDot").className="dot "+m.dot;$("#stateDesc").textContent=m.desc;
@@ -416,7 +440,7 @@ $("#sosBtn").addEventListener("mousedown",armSOS);$("#sosBtn").addEventListener(
 async function triggerSOS(discreet){
   disarmSOS();
   const existing=liveOwnIncident(); if(myState==="sos"&&existing)return openSheet(existing.id);
-  myState="sos"; acquireWake(); paintState();
+  myState="sos"; if(isNative)startNativeWatch();else acquireWake(); paintState();
   const loc=myLoc?{lat:myLoc.lat,lng:myLoc.lng,accuracy:myLoc.accuracy,ts:myLoc.ts}:null;
   const id="inc_"+now().toString(36)+Math.random().toString(36).slice(2,5);
   const row={id,ref:refCode(),owner_id:UID,owner_name:myProfile.name,type:"sos",state:"alerting",trigger:discreet?"discreet":"button",duress:false,last_loc:loc};
@@ -470,12 +494,12 @@ $("#startJourneyBtn").onclick=()=>{
     const t=el("div","label","Expected arrival (minutes)");t.style.marginTop="10px";const ti=el("input");ti.type="number";ti.value="30";ti.inputMode="numeric";
     panel.append(d,di,t,ti);
     const b=el("button","btn","Begin journey");b.style.marginTop="14px";
-    b.onclick=async()=>{const dest=di.value.trim()||"destination";const mins=Math.max(1,parseInt(ti.value)||30);journey={dest,startTs:now(),etaTs:now()+mins*60000,checkInDueTs:now()+mins*60000};myState="journey";acquireWake();paintState();await maybePush(true);closeSheet();switchView("home");toast("Journey started. Stay safe.");};
+    b.onclick=async()=>{const dest=di.value.trim()||"destination";const mins=Math.max(1,parseInt(ti.value)||30);journey={dest,startTs:now(),etaTs:now()+mins*60000,checkInDueTs:now()+mins*60000};myState="journey";if(isNative)startNativeWatch();else acquireWake();paintState();await maybePush(true);closeSheet();switchView("home");toast("Journey started. Stay safe.");};
     panel.appendChild(b);
   });
 };
 $("#checkInBtn").onclick=async()=>{if(!journey)return;journey.checkInDueTs=now()+20*60000;paintState();await maybePush(true);toast("Checked in. Timer extended 20 min.");};
-$("#endJourneyBtn").onclick=async()=>{journey=null;myState="everyday";releaseWake();paintState();await maybePush(true);toast("Journey ended safely.");};
+$("#endJourneyBtn").onclick=async()=>{journey=null;myState="everyday";if(isNative)stopNativeWatch();else releaseWake();paintState();await maybePush(true);toast("Journey ended safely.");};
 let overdueRaised={};
 async function checkJourneyOverdue(){
   if(myState==="journey"&&journey&&now()>journey.checkInDueTs){

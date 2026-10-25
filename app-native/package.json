@@ -1,0 +1,14 @@
+{
+  "name": "beacon-native",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Beacon native Android shell",
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor-community/background-geolocation": "^1.2.25"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}
