@@ -310,6 +310,7 @@ input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="src/auth-logic.js"></script>
 <script>
 "use strict";
 (function(){
@@ -352,7 +353,7 @@ async function boot(){
   if(isRealSession(session)){ afterAuth(session); } else { showAuth(); }
   sb.auth.onAuthStateChange((_ev,s)=>{ if(isRealSession(s) && !authReady){ afterAuth(s); } });
 }
-function isRealSession(s){ return !!(s && s.user && s.user.id && !s.user.is_anonymous); }
+function isRealSession(s){ return BeaconAuth.isRealSession(s); }
 function showAuth(){ authReady=false; ["#gate","#onboard","#shell"].forEach(x=>$(x).classList.add("hidden")); $("#auth").classList.remove("hidden"); }
 async function afterAuth(session){
   authReady=true;
@@ -402,27 +403,27 @@ let otpPhone="", emailMode="login";
 $("#tabPhone").onclick=()=>{ $("#tabPhone").classList.add("on"); $("#tabEmail").classList.remove("on"); $("#panePhone").classList.remove("hidden"); $("#paneEmail").classList.add("hidden"); authMsg(""); };
 $("#tabEmail").onclick=()=>{ $("#tabEmail").classList.add("on"); $("#tabPhone").classList.remove("on"); $("#paneEmail").classList.remove("hidden"); $("#panePhone").classList.add("hidden"); authMsg(""); };
 $("#btnSendOtp").onclick=async()=>{
-  const raw=$("#authPhone").value.trim().replace(/\s/g,"");
-  if(!/^\+?\d{7,15}$/.test(raw)){ authMsg("Enter a valid mobile number with country code, e.g. +2348012345678"); return; }
-  const e164=raw.startsWith("+")?raw:("+"+raw);
+  const raw=$("#authPhone").value;
+  if(!BeaconAuth.isValidPhone(raw)){ authMsg("Enter a valid mobile number with country code, e.g. +2348012345678"); return; }
+  const e164=BeaconAuth.normalizePhone(raw);
   $("#btnSendOtp").disabled=true; authMsg("Sending code…",true);
   const {error}=await sb.auth.signInWithOtp({phone:e164});
   $("#btnSendOtp").disabled=false;
-  if(error){ authMsg(/sms|provider|not enabled|unsupported|disabled/i.test(error.message)?"SMS sign-in isn't switched on for this build yet. Use Email for now, or have the team add the SMS provider in Supabase.":error.message); return; }
+  if(error){ authMsg(BeaconAuth.isSmsNotConfigured(error.message)?"SMS sign-in isn't switched on for this build yet. Use Email for now, or have the team add the SMS provider in Supabase.":error.message); return; }
   otpPhone=e164; $("#otpTo").textContent=e164; $("#phoneStep1").classList.add("hidden"); $("#phoneStep2").classList.remove("hidden"); authMsg("Code sent.",true); $("#authOtp").focus();
 };
 $("#btnOtpBack").onclick=()=>{ $("#phoneStep2").classList.add("hidden"); $("#phoneStep1").classList.remove("hidden"); $("#authOtp").value=""; authMsg(""); };
 $("#btnVerifyOtp").onclick=async()=>{
   const token=$("#authOtp").value.trim();
-  if(!/^\d{4,8}$/.test(token)){ authMsg("Enter the code from the SMS"); return; }
+  if(!BeaconAuth.isValidOtp(token)){ authMsg("Enter the code from the SMS"); return; }
   $("#btnVerifyOtp").disabled=true; authMsg("Verifying…",true);
   const {error}=await sb.auth.verifyOtp({phone:otpPhone,token,type:"sms"});
   $("#btnVerifyOtp").disabled=false;
-  if(error){ authMsg(/expired|invalid/i.test(error.message)?"That code is wrong or has expired — request a new one.":error.message); return; }
+  if(error){ authMsg(BeaconAuth.isOtpInvalid(error.message)?"That code is wrong or has expired — request a new one.":error.message); return; }
   authMsg("Verified.",true); // onAuthStateChange drives afterAuth
 };
 $("#btnEmailToggle").onclick=()=>{
-  emailMode = emailMode==="login" ? "signup" : "login";
+  emailMode = BeaconAuth.nextEmailMode(emailMode);
   $("#btnEmailPrimary").textContent = emailMode==="login" ? "Log in" : "Create account";
   $("#btnEmailToggle").textContent = emailMode==="login" ? "New here? Create account" : "Have an account? Log in";
   $("#authPass").setAttribute("autocomplete", emailMode==="login" ? "current-password" : "new-password");
@@ -430,8 +431,8 @@ $("#btnEmailToggle").onclick=()=>{
 };
 $("#btnEmailPrimary").onclick=async()=>{
   const email=$("#authEmail").value.trim(), pass=$("#authPass").value;
-  if(!/^\S+@\S+\.\S+$/.test(email)){ authMsg("Enter a valid email"); return; }
-  if(pass.length<8){ authMsg("Password must be at least 8 characters"); return; }
+  if(!BeaconAuth.isValidEmail(email)){ authMsg("Enter a valid email"); return; }
+  if(!BeaconAuth.isValidPassword(pass)){ authMsg("Password must be at least 8 characters"); return; }
   $("#btnEmailPrimary").disabled=true; authMsg(emailMode==="login"?"Logging in…":"Creating account…",true);
   const res = emailMode==="login" ? await sb.auth.signInWithPassword({email,password:pass}) : await sb.auth.signUp({email,password:pass});
   $("#btnEmailPrimary").disabled=false;
@@ -441,7 +442,7 @@ $("#btnEmailPrimary").onclick=async()=>{
 };
 $("#btnForgot").onclick=async()=>{
   const email=$("#authEmail").value.trim();
-  if(!/^\S+@\S+\.\S+$/.test(email)){ authMsg("Type your email above first, then tap Forgot password"); return; }
+  if(!BeaconAuth.isValidEmail(email)){ authMsg("Type your email above first, then tap Forgot password"); return; }
   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
   authMsg(error?error.message:"Password reset link sent to your email.",!error);
 };
