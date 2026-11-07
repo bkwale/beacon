@@ -54,6 +54,27 @@ a.maplink{color:var(--accent);font-size:12.5px;text-decoration:none}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all}
 .empty{color:var(--faint);text-align:center;padding:40px 10px}
 .idle{font-size:11px;color:var(--faint)}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.act{background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer}
+.act.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.act.danger{background:transparent;border-color:#5a2a2c;color:#ff8a8a}
+.act.done{background:transparent;border-color:#2a4d33;color:var(--ok)}
+select.classsel{width:auto;min-width:140px;padding:6px 10px;font-size:12.5px;border-radius:8px;text-transform:capitalize}
+.tl{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;display:none}
+.tl.open{display:block}
+.tl .ev{font-size:12px;color:var(--muted);padding:3px 0}
+.tl .ev b{color:var(--text);font-weight:600}
+.noterow{display:flex;gap:6px;margin-top:8px}
+.noterow input{flex:1;padding:7px 10px;font-size:13px}
+.claimed{font-size:12px;color:var(--accent);font-weight:600}
+.classtag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface2)}
+.staffcard{margin-bottom:16px}
+.oprow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.oprow:last-child{border-bottom:0}
+.oprow .em{flex:1;font-size:13px}
+.addrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.addrow input{flex:1;min-width:180px;padding:8px 10px}
+#_toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b232e;border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:10px;font-size:13px;z-index:50;box-shadow:0 6px 24px rgba(0,0,0,.4);opacity:0;transition:opacity .3s;pointer-events:none}
 </style>
 </head>
 <body>
@@ -106,12 +127,23 @@ a.maplink{color:var(--accent);font-size:12.5px;text-decoration:none}
       <button class="btn ghost sm" id="opSignOut">Sign out</button>
     </header>
     <main>
+      <div class="card staffcard hidden" id="staffCard">
+        <div class="qhead" style="margin-top:0"><h1 style="font-size:15px">Manage staff</h1><span class="sp"></span><span class="small muted">admins only</span></div>
+        <div id="opList" class="small muted">Loading…</div>
+        <div class="addrow">
+          <input id="newOpEmail" inputmode="email" placeholder="colleague@techsanctum.org">
+          <select id="newOpRole" class="classsel"><option value="operator">Operator</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select>
+          <button class="act primary" id="addOpBtn">Add staff</button>
+        </div>
+        <div class="muted small" style="margin-top:8px">The person must create a Beacon account in the app first — then add them here by that email.</div>
+        <div class="msg" id="staffMsg" style="margin-top:6px"></div>
+      </div>
       <div class="qhead">
         <h1>Live incident queue</h1>
         <span class="sp"></span>
         <span class="pill"><span class="dot ok"></span><span id="liveTxt">Live</span></span>
       </div>
-      <div class="small muted" style="margin-bottom:12px">Active alerts float to the top. Read-only for now — triage actions ship in the next stage.</div>
+      <div class="small muted" style="margin-bottom:12px">Active alerts float to the top. Claim an alert, set how serious it is, add notes, and mark it resolved — every action is logged in the timeline.</div>
       <div id="queue"></div>
       <div class="idle" id="idleNote"></div>
     </main>
@@ -209,15 +241,23 @@ $("#mfaCancel").onclick=()=>signOut();
 function mfaMsg(m,ok){ const e=$("#mfaMsg"); e.textContent=m||""; e.classList.toggle("ok",!!ok); }
 
 // ---------- console ----------
-let rt=null, idleTimer=null;
+let rt=null, idleTimer=null, MYNAME="Operator", MYUID=null, eventsByInc={};
+const CLASSES=["unclassified","test","accidental","unconfirmed","credible","critical"];
+function toast(m){ const t=$("#_toast")||(()=>{const d=document.createElement("div");d.id="_toast";document.body.appendChild(d);return d;})(); t.textContent=m; t.style.opacity="1"; clearTimeout(t._h); t._h=setTimeout(()=>{t.style.opacity="0";},2600); }
 async function enterConsole(){
   show("#console");
   $("#roleBadge").textContent=MYROLE||"operator";
+  const {data:{user}}=await sb.auth.getUser();
+  MYUID=user.id;
+  const {data:prof}=await sb.from("profiles").select("name").eq("id",user.id).maybeSingle();
+  MYNAME=(prof&&prof.name)||(user.email?user.email.split("@")[0]:"Operator");
+  if(MYROLE==="admin"){ $("#staffCard").classList.remove("hidden"); loadStaff(); }
   await loadProfiles();
   await loadQueue();
   if(!rt){
     rt=sb.channel("ops-rt")
       .on("postgres_changes",{event:"*",schema:"public",table:"incidents"},()=>loadQueue())
+      .on("postgres_changes",{event:"*",schema:"public",table:"incident_events"},()=>loadQueue())
       .on("postgres_changes",{event:"*",schema:"public",table:"locations"},()=>loadQueue())
       .subscribe();
   }
@@ -235,9 +275,13 @@ async function loadProfiles(){
   profilesById={}; (data||[]).forEach(p=>profilesById[p.id]=p);
 }
 async function loadQueue(){
-  const {data,error}=await sb.from("incidents").select("*").order("created_at",{ascending:false});
-  if(error){ $("#queue").innerHTML='<div class="empty">Couldn’t load incidents: '+esc(error.message)+'</div>'; return; }
-  const incs=(data||[]).slice().sort((a,b)=>{
+  const [incRes,evRes]=await Promise.all([
+    sb.from("incidents").select("*").order("created_at",{ascending:false}),
+    sb.from("incident_events").select("*").order("ts",{ascending:true})
+  ]);
+  if(incRes.error){ $("#queue").innerHTML='<div class="empty">Couldn’t load incidents: '+esc(incRes.error.message)+'</div>'; return; }
+  eventsByInc={}; (evRes.data||[]).forEach(e=>{ (eventsByInc[e.incident_id]=eventsByInc[e.incident_id]||[]).push(e); });
+  const incs=(incRes.data||[]).slice().sort((a,b)=>{
     const ar=a.state==="alerting"?0:1, br=b.state==="alerting"?0:1;
     if(ar!==br)return ar-br; return new Date(b.created_at)-new Date(a.created_at);
   });
@@ -251,14 +295,91 @@ function renderInc(i){
   const loc=i.last_loc;
   const when=new Date(i.created_at).toLocaleString();
   const alerting=i.state==="alerting";
+  const resolved=i.state==="resolved"||i.state==="cancelled";
+  const cls=i.classification||"unclassified";
   const map=(loc&&loc.lat!=null)?'<a class="maplink" target="_blank" rel="noopener" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'">📍 Open last location</a>':'<span class="small muted">No location</span>';
+  const claimed=i.operator_name?('<span class="claimed">● claimed by '+esc(i.operator_name)+'</span>'):'';
+  const evs=eventsByInc[i.id]||[];
+  const tl=evs.length?evs.map(e=>'<div class="ev"><b>'+esc(e.actor_name||"system")+'</b> — '+esc(e.detail||e.kind)+' <span class="muted">· '+new Date(e.ts).toLocaleTimeString()+'</span></div>').join(""):'<div class="ev muted">No events yet.</div>';
+  const opts=CLASSES.map(c=>'<option value="'+c+'"'+(c===cls?' selected':'')+'>'+c+'</option>').join("");
+  let actions;
+  if(!resolved){
+    actions='<div class="actions">'
+      +(i.operator_name?'':'<button class="act primary" data-act="claim" data-id="'+esc(i.id)+'">Claim</button>')
+      +'<select class="classsel" data-act="classify" data-id="'+esc(i.id)+'">'+opts+'</select>'
+      +'<button class="act done" data-act="resolve" data-id="'+esc(i.id)+'">Mark resolved</button>'
+      +'<button class="act" data-act="tl" data-id="'+esc(i.id)+'">Timeline ('+evs.length+')</button></div>'
+      +'<div class="noterow"><input data-note="'+esc(i.id)+'" placeholder="Add a note…"><button class="act" data-act="note" data-id="'+esc(i.id)+'">Add</button></div>';
+  } else {
+    actions='<div class="actions"><span class="classtag">'+esc(i.state)+'</span><span class="classtag">'+esc(cls)+'</span>'
+      +'<button class="act" data-act="tl" data-id="'+esc(i.id)+'">Timeline ('+evs.length+')</button></div>';
+  }
   return '<div class="inc '+(alerting?"alerting":"")+'">'
     +'<div class="top"><span class="ref">'+esc(i.ref||i.id)+'</span>'
     +'<span class="pill"><span class="dot '+(alerting?"sos":"ok")+'"></span>'+esc(i.state||"")+'</span>'
-    +'<span class="small muted">'+esc(i.type||"")+(i.trigger?" · "+esc(i.trigger):"")+'</span></div>'
+    +'<span class="classtag">'+esc(cls)+'</span>'
+    +'<span class="small muted">'+esc(i.type||"")+(i.trigger?" · "+esc(i.trigger):"")+'</span>'+claimed+'</div>'
     +'<div class="meta"><span class="who">'+name+'</span>'+(phone?' · '+phone:'')+' · '+esc(when)+'</div>'
-    +'<div class="row">'+map+'</div></div>';
+    +'<div class="row">'+map+'</div>'+actions
+    +'<div class="tl" id="tl_'+esc(i.id)+'">'+tl+'</div></div>';
 }
+
+// ---------- triage actions (delegated) ----------
+$("#queue").addEventListener("click",async(e)=>{
+  const btn=e.target.closest("[data-act]"); if(!btn||btn.tagName==="SELECT")return;
+  const act=btn.getAttribute("data-act"), id=btn.getAttribute("data-id");
+  if(act==="tl"){ const el=document.getElementById("tl_"+id); if(el)el.classList.toggle("open"); return; }
+  if(act==="claim"){ await incUpdate(id,{operator_id:MYUID,operator_name:MYNAME},"claimed","Claimed by "+MYNAME); toast("Claimed."); return; }
+  if(act==="resolve"){ await incUpdate(id,{state:"resolved"},"resolved","Marked resolved by "+MYNAME); toast("Marked resolved."); return; }
+  if(act==="note"){ const inp=document.querySelector('[data-note="'+String(id).replace(/"/g,'\\"')+'"]'); const t=inp?inp.value.trim():""; if(!t)return; await addEvent(id,"note",t); if(inp)inp.value=""; toast("Note added."); loadQueue(); return; }
+});
+$("#queue").addEventListener("change",async(e)=>{
+  const sel=e.target.closest('select[data-act="classify"]'); if(!sel)return;
+  await incUpdate(sel.getAttribute("data-id"),{classification:sel.value},"classified","Classified as "+sel.value); toast("Classified as "+sel.value+".");
+});
+async function incUpdate(id,patch,kind,detail){
+  const {error}=await sb.from("incidents").update(patch).eq("id",id);
+  if(error){ toast("Action failed: "+error.message); return; }
+  await addEvent(id,kind,detail); loadQueue();
+}
+async function addEvent(id,kind,detail){
+  await sb.from("incident_events").insert({incident_id:id,actor_id:MYUID,actor_name:MYNAME,kind,detail});
+}
+
+// ---------- staff management (admin, via edge function) ----------
+async function callAdmin(payload){
+  const {data,error}=await sb.functions.invoke("admin-operators",{body:payload});
+  if(error){ let msg=error.message||"request failed"; try{ const c=error.context&&await error.context.json(); if(c&&c.error)msg=c.error; }catch(_){ } return {error:msg}; }
+  return data||{};
+}
+async function loadStaff(){
+  const r=await callAdmin({action:"list"});
+  if(r.error){ $("#opList").innerHTML='<span style="color:#ff8a8a">'+esc(r.error)+'</span>'; return; }
+  renderStaff(r.operators||[]);
+}
+function renderStaff(ops){
+  if(!ops.length){ $("#opList").innerHTML='<span class="muted">No operators yet.</span>'; return; }
+  $("#opList").innerHTML=ops.map(o=>'<div class="oprow"><span class="em">'+esc(o.email)+'</span>'
+    +'<span class="classtag">'+esc(o.role)+'</span>'
+    +(o.is_self?'<span class="small muted">you</span>':'<button class="act danger" data-rm="'+esc(o.user_id)+'">Remove</button>')+'</div>').join("");
+}
+$("#opList").addEventListener("click",async(e)=>{
+  const b=e.target.closest("[data-rm]"); if(!b)return;
+  staffMsg("Removing…",true);
+  const r=await callAdmin({action:"remove",user_id:b.getAttribute("data-rm")});
+  if(r.error){ staffMsg(r.error); return; }
+  staffMsg("Removed (you can re-add anytime).",true); renderStaff(r.operators||[]);
+});
+$("#addOpBtn").onclick=async()=>{
+  const email=$("#newOpEmail").value.trim(), role=$("#newOpRole").value;
+  if(!/^\S+@\S+\.\S+$/.test(email)){ staffMsg("Enter a valid email"); return; }
+  $("#addOpBtn").disabled=true; staffMsg("Adding…",true);
+  const r=await callAdmin({action:"add",email,role});
+  $("#addOpBtn").disabled=false;
+  if(r.error){ staffMsg(r.error); return; }
+  staffMsg("Added "+email+" as "+role+".",true); $("#newOpEmail").value=""; renderStaff(r.operators||[]);
+};
+function staffMsg(m,ok){ const e=$("#staffMsg"); e.textContent=m||""; e.classList.toggle("ok",!!ok); }
 
 // ---------- sign out ----------
 async function signOut(reason){
