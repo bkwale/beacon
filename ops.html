@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Beacon Ops</title>
+<style>
+:root{
+  --bg:#0b0f14; --surface:#131a23; --surface2:#1b232e; --line:#26303c;
+  --text:#e8eef5; --muted:#8a99ab; --faint:#5b6b7c;
+  --accent:#2f81f7; --accent2:#1f6feb; --ok:#51cf66; --warn:#ffb84d; --sos:#ff4d4f;
+  --radius:14px; --tap:44px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.hidden{display:none !important}
+input{font:inherit;color:var(--text);background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%}
+input:focus{outline:none;border-color:var(--accent)}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:12px;padding:13px 16px;font-weight:600;min-height:var(--tap);width:100%;cursor:pointer}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.btn.sm{width:auto;padding:7px 12px;min-height:34px;font-size:13px;border-radius:9px}
+.label{font-size:12px;color:var(--muted);margin:2px 0 6px;font-weight:600}
+.muted{color:var(--muted)}.small{font-size:12.5px}
+.center{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:30px;text-align:center}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.authcard{width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;text-align:left}
+.mk{width:52px;height:52px;border-radius:14px;background:linear-gradient(145deg,#2f81f7,#1b55b3);display:grid;place-items:center}
+.mk svg{width:28px;height:28px}
+.msg{min-height:16px;font-size:12.5px;color:#ff8a8a}
+.msg.ok{color:var(--ok)}
+.rolebadge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:var(--surface2);border:1px solid var(--line);text-transform:uppercase;letter-spacing:.04em}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0e141b,#0b0f14);position:sticky;top:0;z-index:5}
+header .mk{width:30px;height:30px;border-radius:9px}
+header .mk svg{width:17px;height:17px}
+.sp{flex:1}
+main{padding:14px 16px 40px;max-width:900px;margin:0 auto}
+.qhead{display:flex;align-items:center;gap:10px;margin:4px 0 12px}
+.qhead h1{font-size:17px;margin:0}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--line);background:var(--surface2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.sos{background:var(--sos)}.dot.ok{background:var(--ok)}
+.inc{border-left:3px solid var(--line);padding:12px 14px;margin-bottom:10px}
+.inc.alerting{border-left-color:var(--sos);background:rgba(255,77,79,.05)}
+.inc .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inc .ref{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.inc .who{font-weight:600}
+.inc .meta{color:var(--muted);font-size:12.5px;margin-top:4px}
+.inc .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+a.maplink{color:var(--accent);font-size:12.5px;text-decoration:none}
+.qr{background:#fff;padding:12px;border-radius:12px;width:200px;height:200px;margin:0 auto}
+.qr svg,.qr img{width:100%;height:100%}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all}
+.empty{color:var(--faint);text-align:center;padding:40px 10px}
+.idle{font-size:11px;color:var(--faint)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN -->
+  <section id="login" class="center">
+    <div class="mk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
+    <div><strong style="font-size:19px">Beacon Ops</strong><div class="muted small">Responder console — staff only</div></div>
+    <div class="authcard">
+      <div><div class="label">Work email</div><input id="opEmail" inputmode="email" autocomplete="email" placeholder="you@techsanctum.org"></div>
+      <div><div class="label">Password</div><input id="opPass" type="password" autocomplete="current-password" placeholder="Your password"></div>
+      <button class="btn" id="opLoginBtn">Sign in</button>
+      <div class="msg" id="loginMsg"></div>
+    </div>
+  </section>
+
+  <!-- MFA -->
+  <section id="mfa" class="center hidden">
+    <div class="mk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
+    <div><strong style="font-size:19px">Two-factor verification</strong><div class="muted small" id="mfaSub">Enter the 6-digit code from your authenticator app</div></div>
+    <div class="authcard">
+      <div id="enrollWrap" class="hidden">
+        <div class="label">1 — Scan this in Google Authenticator / Authy</div>
+        <div class="qr" id="qrBox"></div>
+        <div class="small muted" style="margin:8px 0 4px">Can't scan? Enter this key manually:</div>
+        <div class="mono" id="secretTxt"></div>
+      </div>
+      <div><div class="label" id="codeLabel">6-digit code</div><input id="mfaCode" inputmode="numeric" maxlength="6" placeholder="000000" style="letter-spacing:8px;text-align:center;font-size:20px"></div>
+      <button class="btn" id="mfaVerifyBtn">Verify</button>
+      <button class="btn ghost sm" id="mfaCancel" style="width:100%">Cancel</button>
+      <div class="msg" id="mfaMsg"></div>
+    </div>
+  </section>
+
+  <!-- DENIED -->
+  <section id="denied" class="center hidden">
+    <div class="mk" style="background:linear-gradient(145deg,#ff6b6b,#c0392b)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div><strong style="font-size:18px">Not an operator account</strong><div class="muted small" style="max-width:300px">This sign-in is for Beacon response staff. If you should have access, ask an admin to add you.</div></div>
+    <button class="btn ghost sm" id="deniedOut">Sign out</button>
+  </section>
+
+  <!-- CONSOLE -->
+  <div id="console" class="hidden">
+    <header>
+      <span class="mk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></span>
+      <strong>Beacon Ops</strong>
+      <span class="sp"></span>
+      <span class="rolebadge" id="roleBadge">—</span>
+      <button class="btn ghost sm" id="opSignOut">Sign out</button>
+    </header>
+    <main>
+      <div class="qhead">
+        <h1>Live incident queue</h1>
+        <span class="sp"></span>
+        <span class="pill"><span class="dot ok"></span><span id="liveTxt">Live</span></span>
+      </div>
+      <div class="small muted" style="margin-bottom:12px">Active alerts float to the top. Read-only for now — triage actions ship in the next stage.</div>
+      <div id="queue"></div>
+      <div class="idle" id="idleNote"></div>
+    </main>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL="https://ngikudxuhbmkfgskezax.supabase.co";
+const SB_KEY="sb_publishable_28740K2imbf0dV5IY2PPgw_VN-Q1snZ";
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+const $=s=>document.querySelector(s);
+const show=id=>{["#login","#mfa","#denied","#console"].forEach(x=>$(x).classList.add("hidden"));$(id).classList.remove("hidden");};
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let MYROLE=null, enrollFactorId=null, profilesById={};
+const IDLE_MS=15*60*1000; // 15-minute inactivity timeout
+let lastActivity=Date.now();
+
+// ---------- boot ----------
+(async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session) route(); else show("#login");
+  sb.auth.onAuthStateChange((_e,s)=>{ if(!s) show("#login"); });
+})();
+
+// ---------- login ----------
+$("#opLoginBtn").onclick=async()=>{
+  const email=$("#opEmail").value.trim(), pass=$("#opPass").value;
+  if(!/^\S+@\S+\.\S+$/.test(email)){ loginMsg("Enter a valid email"); return; }
+  if(!pass){ loginMsg("Enter your password"); return; }
+  $("#opLoginBtn").disabled=true; loginMsg("Signing in…",true);
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  $("#opLoginBtn").disabled=false;
+  if(error){ loginMsg(/invalid/i.test(error.message)?"Email or password is incorrect.":error.message); return; }
+  loginMsg(""); route();
+};
+function loginMsg(m,ok){ const e=$("#loginMsg"); e.textContent=m||""; e.classList.toggle("ok",!!ok); }
+
+// ---------- routing after auth: role gate -> MFA -> console ----------
+async function route(){
+  const {data:{user}}=await sb.auth.getUser();
+  if(!user){ show("#login"); return; }
+  // 1) operator role gate
+  const {data:role}=await sb.from("operator_roles").select("role").eq("user_id",user.id).maybeSingle();
+  if(!role){ show("#denied"); return; }
+  MYROLE=role.role;
+  // 2) MFA — require AAL2
+  const {data:aal}=await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if(aal && aal.currentLevel==="aal2"){ enterConsole(); return; }
+  if(aal && aal.nextLevel==="aal2" && aal.currentLevel==="aal1"){ await startMfaChallenge(); return; }
+  // no factor yet -> enrol
+  await startMfaEnroll();
+}
+
+// ---------- MFA: enrol ----------
+async function startMfaEnroll(){
+  show("#mfa");
+  $("#mfaSub").textContent="Set up two-factor security to continue";
+  $("#enrollWrap").classList.remove("hidden");
+  $("#codeLabel").textContent="2 — Enter the 6-digit code it shows";
+  mfaMsg("Generating your secure key…",true);
+  const {data,error}=await sb.auth.mfa.enroll({factorType:"totp",friendlyName:"Authenticator "+Date.now()});
+  if(error){ mfaMsg(error.message); return; }
+  enrollFactorId=data.id;
+  $("#qrBox").innerHTML=/svg/i.test(data.totp.qr_code)?data.totp.qr_code:('<img alt="QR" src="'+data.totp.qr_code+'">');
+  $("#secretTxt").textContent=data.totp.secret;
+  mfaMsg("");
+}
+
+// ---------- MFA: challenge an existing factor ----------
+async function startMfaChallenge(){
+  show("#mfa");
+  $("#mfaSub").textContent="Enter the 6-digit code from your authenticator app";
+  $("#enrollWrap").classList.add("hidden");
+  $("#codeLabel").textContent="6-digit code";
+  const {data,error}=await sb.auth.mfa.listFactors();
+  if(error){ mfaMsg(error.message); return; }
+  const totp=(data&&data.totp&&data.totp[0])?data.totp[0]:null;
+  if(!totp){ await startMfaEnroll(); return; }
+  enrollFactorId=totp.id;
+}
+
+$("#mfaVerifyBtn").onclick=async()=>{
+  const code=$("#mfaCode").value.trim();
+  if(!/^\d{6}$/.test(code)){ mfaMsg("Enter the 6-digit code"); return; }
+  if(!enrollFactorId){ mfaMsg("No security factor in progress — reload."); return; }
+  $("#mfaVerifyBtn").disabled=true; mfaMsg("Verifying…",true);
+  const {error}=await sb.auth.mfa.challengeAndVerify({factorId:enrollFactorId,code});
+  $("#mfaVerifyBtn").disabled=false;
+  if(error){ mfaMsg(/invalid|expired/i.test(error.message)?"That code didn't match — try the next one.":error.message); return; }
+  mfaMsg("Verified.",true); enterConsole();
+};
+$("#mfaCancel").onclick=()=>signOut();
+function mfaMsg(m,ok){ const e=$("#mfaMsg"); e.textContent=m||""; e.classList.toggle("ok",!!ok); }
+
+// ---------- console ----------
+let rt=null, idleTimer=null;
+async function enterConsole(){
+  show("#console");
+  $("#roleBadge").textContent=MYROLE||"operator";
+  await loadProfiles();
+  await loadQueue();
+  if(!rt){
+    rt=sb.channel("ops-rt")
+      .on("postgres_changes",{event:"*",schema:"public",table:"incidents"},()=>loadQueue())
+      .on("postgres_changes",{event:"*",schema:"public",table:"locations"},()=>loadQueue())
+      .subscribe();
+  }
+  ["click","keydown","mousemove","touchstart"].forEach(ev=>document.addEventListener(ev,markActive,{passive:true}));
+  clearInterval(idleTimer); idleTimer=setInterval(checkIdle,30000); lastActivity=Date.now();
+}
+function markActive(){ lastActivity=Date.now(); }
+function checkIdle(){
+  const left=IDLE_MS-(Date.now()-lastActivity);
+  if(left<=0){ signOut("Signed out after 15 minutes of inactivity."); return; }
+  $("#idleNote").textContent="Auto sign-out in "+Math.ceil(left/60000)+" min of inactivity.";
+}
+async function loadProfiles(){
+  const {data}=await sb.from("profiles").select("id,name,phone");
+  profilesById={}; (data||[]).forEach(p=>profilesById[p.id]=p);
+}
+async function loadQueue(){
+  const {data,error}=await sb.from("incidents").select("*").order("created_at",{ascending:false});
+  if(error){ $("#queue").innerHTML='<div class="empty">Couldn’t load incidents: '+esc(error.message)+'</div>'; return; }
+  const incs=(data||[]).slice().sort((a,b)=>{
+    const ar=a.state==="alerting"?0:1, br=b.state==="alerting"?0:1;
+    if(ar!==br)return ar-br; return new Date(b.created_at)-new Date(a.created_at);
+  });
+  if(!incs.length){ $("#queue").innerHTML='<div class="empty">No incidents yet. Live alerts will appear here the moment someone triggers one.</div>'; return; }
+  $("#queue").innerHTML=incs.map(renderInc).join("");
+}
+function renderInc(i){
+  const who=profilesById[i.owner_id];
+  const name=esc(i.owner_name||(who?who.name:"Unknown"));
+  const phone=who&&who.phone?esc(who.phone):"";
+  const loc=i.last_loc;
+  const when=new Date(i.created_at).toLocaleString();
+  const alerting=i.state==="alerting";
+  const map=(loc&&loc.lat!=null)?'<a class="maplink" target="_blank" rel="noopener" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'">📍 Open last location</a>':'<span class="small muted">No location</span>';
+  return '<div class="inc '+(alerting?"alerting":"")+'">'
+    +'<div class="top"><span class="ref">'+esc(i.ref||i.id)+'</span>'
+    +'<span class="pill"><span class="dot '+(alerting?"sos":"ok")+'"></span>'+esc(i.state||"")+'</span>'
+    +'<span class="small muted">'+esc(i.type||"")+(i.trigger?" · "+esc(i.trigger):"")+'</span></div>'
+    +'<div class="meta"><span class="who">'+name+'</span>'+(phone?' · '+phone:'')+' · '+esc(when)+'</div>'
+    +'<div class="row">'+map+'</div></div>';
+}
+
+// ---------- sign out ----------
+async function signOut(reason){
+  try{ if(rt){ sb.removeChannel(rt); rt=null; } await sb.auth.signOut(); }catch(e){}
+  clearInterval(idleTimer);
+  MYROLE=null; enrollFactorId=null;
+  show("#login");
+  if(reason) loginMsg(reason);
+}
+$("#opSignOut").onclick=()=>signOut();
+$("#deniedOut").onclick=()=>signOut();
+</script>
+</body>
+</html>
