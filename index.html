@@ -153,6 +153,15 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
 .bigmk svg{width:34px;height:34px}
 .label{font-size:12px;color:var(--muted);margin:2px 0 6px;font-weight:600}
 .opsNote{font-size:11.5px;color:var(--faint);background:var(--surface2);border:1px dashed var(--line);border-radius:10px;padding:8px 10px;margin-top:10px}
+.authcard{width:100%;max-width:340px;margin-top:6px;gap:12px}
+.seg{display:flex;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px;width:100%}
+.seg button{flex:1;padding:9px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-weight:600;cursor:pointer;min-height:38px;width:auto}
+.seg button.on{background:var(--accent2);color:#fff}
+.linkbtn{background:0;border:0;color:var(--accent);font-size:12.5px;cursor:pointer;padding:4px 0;width:auto}
+.between{justify-content:space-between}
+input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700}
+.authmsg{min-height:16px;font-size:12.5px;color:#ff8a8a;text-align:left}
+.authmsg.ok{color:#51cf66}
 </style>
 </head>
 <body>
@@ -164,6 +173,39 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
     <div class="bigmk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
     <div><strong style="font-size:20px">Beacon</strong><div class="muted small">Consent-based personal safety</div></div>
     <div class="muted small" id="gateMsg" style="max-width:300px">Checking your session…</div>
+  </section>
+
+  <!-- AUTH -->
+  <section id="auth" class="center hidden">
+    <div class="bigmk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
+    <div><strong style="font-size:20px">Beacon</strong><div class="muted small">Consent-based personal safety</div></div>
+    <div class="col authcard">
+      <div class="seg"><button id="tabPhone" class="on">Phone</button><button id="tabEmail">Email</button></div>
+
+      <!-- phone -->
+      <div id="panePhone" class="col">
+        <div id="phoneStep1" class="col">
+          <div><div class="label" style="text-align:left">Mobile number</div><input id="authPhone" inputmode="tel" autocomplete="tel" placeholder="+234 801 234 5678"></div>
+          <button class="btn" id="btnSendOtp">Send code</button>
+        </div>
+        <div id="phoneStep2" class="col hidden">
+          <div><div class="label" style="text-align:left">Enter the code sent to <span id="otpTo"></span></div><input id="authOtp" class="otpin" inputmode="numeric" maxlength="6" placeholder="······"></div>
+          <button class="btn" id="btnVerifyOtp">Verify &amp; continue</button>
+          <button class="linkbtn" id="btnOtpBack">Use a different number</button>
+        </div>
+      </div>
+
+      <!-- email -->
+      <div id="paneEmail" class="col hidden">
+        <div><div class="label" style="text-align:left">Email</div><input id="authEmail" inputmode="email" autocomplete="email" placeholder="you@email.com"></div>
+        <div><div class="label" style="text-align:left">Password</div><input id="authPass" type="password" autocomplete="current-password" placeholder="At least 8 characters"></div>
+        <button class="btn" id="btnEmailPrimary">Log in</button>
+        <div class="row between"><button class="linkbtn" id="btnEmailToggle">New here? Create account</button><button class="linkbtn" id="btnForgot">Forgot password?</button></div>
+      </div>
+
+      <div class="authmsg" id="authMsg"></div>
+      <div class="opsNote">We verify your identity before anyone can see your location. Your number and email are never shared without your consent.</div>
+    </div>
   </section>
 
   <!-- ONBOARDING -->
@@ -183,7 +225,7 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
   <div id="shell" class="hidden" style="display:flex;flex-direction:column;height:100%">
     <header>
       <div class="logo"><span class="mk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></span>Beacon</div>
-      <div class="who"><span class="pill" id="connPill"><span class="dot" id="connDot"></span><span id="connTxt">Live</span></span><span class="avatar" id="meAva">?</span></div>
+      <div class="who"><span class="pill" id="connPill"><span class="dot" id="connDot"></span><span id="connTxt">Live</span></span><button class="btn ghost sm" id="signOutBtn" style="padding:6px 10px;min-height:32px">Sign out</button><span class="avatar" id="meAva">?</span></div>
     </header>
 
     <main>
@@ -268,6 +310,7 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="src/auth-logic.js"></script>
 <script>
 "use strict";
 (function(){
@@ -301,28 +344,34 @@ const STATE_META={
   sos:{name:"EMERGENCY",dot:"sos",title:"SOS active",desc:"Maximum sampling. Your circle has been alerted and an incident is live in the operations console."}
 };
 
-// ===== boot =====
+// ===== boot / auth =====
+let authReady=false;
 async function boot(){
   $("#gateMsg").textContent="Connecting…";
   let session=null;
   try{ const r=await sb.auth.getSession(); session=r.data.session; }catch(e){}
-  if(!session){
-    const {data,error}=await sb.auth.signInAnonymously();
-    if(error){
-      $("#gateMsg").innerHTML = /disabled|anonymous/i.test(error.message)
-        ? "Setup step needed: enable <b>Anonymous sign-ins</b> in Supabase → Authentication → Providers, then reload."
-        : "Couldn't start a session: "+esc(error.message);
-      return;
-    }
-    session=data.session;
-  }
+  if(isRealSession(session)){ afterAuth(session); } else { showAuth(); }
+  sb.auth.onAuthStateChange((_ev,s)=>{ if(isRealSession(s) && !authReady){ afterAuth(s); } });
+}
+function isRealSession(s){ return BeaconAuth.isRealSession(s); }
+function showAuth(){ authReady=false; ["#gate","#onboard","#shell"].forEach(x=>$(x).classList.add("hidden")); $("#auth").classList.remove("hidden"); }
+async function afterAuth(session){
+  authReady=true;
   UID=session.user.id;
+  $("#auth").classList.add("hidden"); $("#gate").classList.remove("hidden"); $("#gateMsg").textContent="Loading your Beacon…";
   await Promise.all([refresh("profiles"),refresh("memberships"),refresh("locations"),refresh("incidents"),refresh("events")]);
   setupRealtime();
   myProfile=profiles.get(UID)||null;
-  if(myProfile){ enterApp(); } else { $("#gate").classList.add("hidden"); $("#onboard").classList.remove("hidden"); }
+  if(myProfile){ enterApp(); }
+  else {
+    const au=session.user;
+    if(au.phone && $("#obPhone")) $("#obPhone").value = au.phone.startsWith("+")?au.phone:("+"+au.phone);
+    if(au.email && $("#obEmail")) $("#obEmail").value = au.email;
+    $("#gate").classList.add("hidden"); $("#onboard").classList.remove("hidden");
+  }
   readyOnce=true;
 }
+async function signOut(){ try{ await sb.auth.signOut(); }catch(e){} UID=null; myProfile=null; authReady=false; location.reload(); }
 boot();
 
 // ===== data layer =====
@@ -347,6 +396,57 @@ function setupRealtime(){
     .on("postgres_changes",{event:"*",schema:"public",table:"profiles"},()=>debRefresh("profiles"))
     .subscribe();
 }
+
+// ===== auth handlers =====
+function authMsg(m,ok){ const e=$("#authMsg"); if(!e)return; e.textContent=m||""; e.classList.toggle("ok",!!ok); }
+let otpPhone="", emailMode="login";
+$("#tabPhone").onclick=()=>{ $("#tabPhone").classList.add("on"); $("#tabEmail").classList.remove("on"); $("#panePhone").classList.remove("hidden"); $("#paneEmail").classList.add("hidden"); authMsg(""); };
+$("#tabEmail").onclick=()=>{ $("#tabEmail").classList.add("on"); $("#tabPhone").classList.remove("on"); $("#paneEmail").classList.remove("hidden"); $("#panePhone").classList.add("hidden"); authMsg(""); };
+$("#btnSendOtp").onclick=async()=>{
+  const raw=$("#authPhone").value;
+  if(!BeaconAuth.isValidPhone(raw)){ authMsg("Enter a valid mobile number with country code, e.g. +2348012345678"); return; }
+  const e164=BeaconAuth.normalizePhone(raw);
+  $("#btnSendOtp").disabled=true; authMsg("Sending code…",true);
+  const {error}=await sb.auth.signInWithOtp({phone:e164});
+  $("#btnSendOtp").disabled=false;
+  if(error){ authMsg(BeaconAuth.isSmsNotConfigured(error.message)?"SMS sign-in isn't switched on for this build yet. Use Email for now, or have the team add the SMS provider in Supabase.":error.message); return; }
+  otpPhone=e164; $("#otpTo").textContent=e164; $("#phoneStep1").classList.add("hidden"); $("#phoneStep2").classList.remove("hidden"); authMsg("Code sent.",true); $("#authOtp").focus();
+};
+$("#btnOtpBack").onclick=()=>{ $("#phoneStep2").classList.add("hidden"); $("#phoneStep1").classList.remove("hidden"); $("#authOtp").value=""; authMsg(""); };
+$("#btnVerifyOtp").onclick=async()=>{
+  const token=$("#authOtp").value.trim();
+  if(!BeaconAuth.isValidOtp(token)){ authMsg("Enter the code from the SMS"); return; }
+  $("#btnVerifyOtp").disabled=true; authMsg("Verifying…",true);
+  const {error}=await sb.auth.verifyOtp({phone:otpPhone,token,type:"sms"});
+  $("#btnVerifyOtp").disabled=false;
+  if(error){ authMsg(BeaconAuth.isOtpInvalid(error.message)?"That code is wrong or has expired — request a new one.":error.message); return; }
+  authMsg("Verified.",true); // onAuthStateChange drives afterAuth
+};
+$("#btnEmailToggle").onclick=()=>{
+  emailMode = BeaconAuth.nextEmailMode(emailMode);
+  $("#btnEmailPrimary").textContent = emailMode==="login" ? "Log in" : "Create account";
+  $("#btnEmailToggle").textContent = emailMode==="login" ? "New here? Create account" : "Have an account? Log in";
+  $("#authPass").setAttribute("autocomplete", emailMode==="login" ? "current-password" : "new-password");
+  authMsg("");
+};
+$("#btnEmailPrimary").onclick=async()=>{
+  const email=$("#authEmail").value.trim(), pass=$("#authPass").value;
+  if(!BeaconAuth.isValidEmail(email)){ authMsg("Enter a valid email"); return; }
+  if(!BeaconAuth.isValidPassword(pass)){ authMsg("Password must be at least 8 characters"); return; }
+  $("#btnEmailPrimary").disabled=true; authMsg(emailMode==="login"?"Logging in…":"Creating account…",true);
+  const res = emailMode==="login" ? await sb.auth.signInWithPassword({email,password:pass}) : await sb.auth.signUp({email,password:pass});
+  $("#btnEmailPrimary").disabled=false;
+  if(res.error){ authMsg(res.error.message); return; }
+  if(emailMode==="signup" && res.data && res.data.user && !res.data.session){ authMsg("Account created — check your email to confirm, then log in.",true); return; }
+  authMsg("Success.",true); // onAuthStateChange drives afterAuth
+};
+$("#btnForgot").onclick=async()=>{
+  const email=$("#authEmail").value.trim();
+  if(!BeaconAuth.isValidEmail(email)){ authMsg("Type your email above first, then tap Forgot password"); return; }
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  authMsg(error?error.message:"Password reset link sent to your email.",!error);
+};
+const _soBtn=$("#signOutBtn"); if(_soBtn) _soBtn.onclick=()=>signOut();
 
 // ===== onboarding =====
 $("#obSave").onclick=async()=>{
