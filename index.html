@@ -619,16 +619,17 @@ async function checkJourneyOverdue(){
 // ===== circle / invites =====
 function checkInviteParam(){
   const code=new URL(location.href).searchParams.get("invite"); if(!code)return;
-  sb.from("invites").select("*").eq("code",code).maybeSingle().then(({data:inv})=>{
-    if(!inv)return; if(inv.owner_id===UID){toast("That's your own invite link.");return;}
+  sb.rpc("preview_invite",{p_code:code}).then(({data,error})=>{
+    const inv=(data&&data[0])?data[0]:null;
+    if(error||!inv)return; if(inv.owner_id===UID){toast("That's your own invite link.");return;}
     openSheetCustom(panel=>{
       panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Join a Safety Circle"));
       const who=profiles.get(inv.owner_id);
       panel.appendChild(el("p","sub",(who?who.name:(inv.owner_name||"Someone"))+" invited you to be a trusted safety contact. You'll be alerted if they trigger an emergency."));
       const b=el("button","btn","Accept — I'll be their contact");
-      b.onclick=async()=>{ const mid="m_"+inv.owner_id.slice(0,8)+"_"+UID.slice(0,8);
-        const {error}=await sb.from("memberships").upsert({id:mid,owner_id:inv.owner_id,contact_id:UID,status:"accepted",ord:1});
-        if(error){toast("Accept failed: "+error.message);return;}
+      b.onclick=async()=>{
+        const {error}=await sb.rpc("accept_invite",{p_code:code});
+        if(error){toast("Accept failed: "+(error.message||"invalid invite"));return;}
         await refresh("memberships"); closeSheet(); switchView("circle"); toast("You're now a trusted contact."); history.replaceState({},"",location.pathname);
       };
       const c=el("button","btn ghost","Not now");c.style.marginTop="8px";c.onclick=()=>{closeSheet();history.replaceState({},"",location.pathname);};
