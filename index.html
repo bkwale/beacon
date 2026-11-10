@@ -179,6 +179,7 @@ input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700
 .obperm.ok{border-color:#51cf66;color:#51cf66}
 .obpok{font-weight:800;color:#51cf66}
 .obhint{font-size:11.5px;color:var(--faint);text-align:left;margin-top:-6px}
+.tag.pending{background:rgba(246,183,60,.15);color:var(--warn);border-color:rgba(246,183,60,.4)}
 </style>
 </head>
 <body>
@@ -391,7 +392,7 @@ let battery=null, journey=null, armTimer=null, bootResolved=false, readyOnce=fal
 let bgWatcherId=null;
 const CAP=window.Capacitor;
 const isNative=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
-const profiles=new Map(), memberships=new Map(), locations=new Map(), incidents=new Map(), eventsByInc=new Map();
+const profiles=new Map(), memberships=new Map(), locations=new Map(), incidents=new Map(), eventsByInc=new Map(), invitesSent=new Map();
 let currentView="home", sheetMap=null, sheetOpenId=null;
 const STATE_META={
   everyday:{name:"Dormant",dot:"ok",title:"Everyday mode",desc:"Low-power safety context. No active location sharing until you start a journey or trigger SOS."},
@@ -414,7 +415,7 @@ async function afterAuth(session){
   authReady=true;
   UID=session.user.id;
   $("#auth").classList.add("hidden"); $("#gate").classList.remove("hidden"); $("#gateMsg").textContent="Loading your Beacon…";
-  await Promise.all([refresh("profiles"),refresh("memberships"),refresh("locations"),refresh("incidents"),refresh("events")]);
+  await Promise.all([refresh("profiles"),refresh("memberships"),refresh("locations"),refresh("incidents"),refresh("events"),refresh("invites")]);
   setupRealtime();
   myProfile=profiles.get(UID)||null;
   if(myProfile){ enterApp(); }
@@ -433,6 +434,7 @@ boot();
 async function refresh(t){
   if(t==="profiles"){ const {data}=await sb.from("profiles").select("*"); profiles.clear(); (data||[]).forEach(r=>profiles.set(r.id,r)); return; }
   if(t==="memberships"){ const {data}=await sb.from("memberships").select("*"); memberships.clear(); (data||[]).forEach(r=>memberships.set(r.id,{id:r.id,ownerUid:r.owner_id,contactUid:r.contact_id,status:r.status,order:r.ord})); return; }
+  if(t==="invites"){ const {data}=await sb.from("invites").select("*"); invitesSent.clear(); (data||[]).forEach(r=>invitesSent.set(r.code,{code:r.code,label:r.label,ownerUid:r.owner_id,accepted:!!r.accepted_at,acceptedBy:r.accepted_by,ts:ms(r.created_at)})); return; }
   if(t==="locations"){ const {data}=await sb.from("locations").select("*"); locations.clear(); (data||[]).forEach(r=>locations.set(r.id,{uid:r.id,name:r.name,state:r.state,lat:r.lat,lng:r.lng,accuracy:r.accuracy,battery:r.battery,charging:r.charging,online:r.online,journey:r.journey,ts:ms(r.ts)})); return; }
   if(t==="incidents"){ const {data}=await sb.from("incidents").select("*"); incidents.clear(); (data||[]).forEach(r=>incidents.set(r.id,normInc(r))); attachEvents(); return; }
   if(t==="events"){ const {data}=await sb.from("incident_events").select("*").order("ts",{ascending:true}); eventsByInc.clear(); (data||[]).forEach(e=>{ const a=eventsByInc.get(e.incident_id)||[]; a.push({ts:ms(e.ts),actorUid:e.actor_id,actorName:e.actor_name,kind:e.kind,detail:e.detail}); eventsByInc.set(e.incident_id,a); }); attachEvents(); return; }
@@ -447,7 +449,8 @@ function setupRealtime(){
     .on("postgres_changes",{event:"*",schema:"public",table:"locations"},()=>debRefresh("locations"))
     .on("postgres_changes",{event:"*",schema:"public",table:"incidents"},p=>{ const live=liveForMe().length; debRefresh("incidents"); if(p.eventType==="INSERT")setTimeout(()=>detectNewAlert(live),400); })
     .on("postgres_changes",{event:"*",schema:"public",table:"incident_events"},()=>debRefresh("events"))
-    .on("postgres_changes",{event:"*",schema:"public",table:"memberships"},()=>debRefresh("memberships"))
+    .on("postgres_changes",{event:"*",schema:"public",table:"memberships"},()=>debRefresh("memberships","invites"))
+    .on("postgres_changes",{event:"*",schema:"public",table:"invites"},()=>debRefresh("invites"))
     .on("postgres_changes",{event:"*",schema:"public",table:"profiles"},()=>debRefresh("profiles"))
     .subscribe();
 }
@@ -765,6 +768,11 @@ function checkInviteParam(){
     openSheetCustom(panel=>{
       panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Join a Safety Circle"));
       const who=profiles.get(inv.owner_id);
+      if(inv.accepted){
+        panel.appendChild(el("p","sub","This invite has already been used. Ask "+(who?who.name:(inv.owner_name||"them"))+" for a fresh invite link."));
+        const cc=el("button","btn ghost","Close");cc.onclick=()=>{closeSheet();history.replaceState({},"",location.pathname);};panel.appendChild(cc);
+        return;
+      }
       panel.appendChild(el("p","sub",(who?who.name:(inv.owner_name||"Someone"))+" invited you to be a trusted safety contact. You'll be alerted if they trigger an emergency."));
       const b=el("button","btn","Accept — I'll be their contact");
       b.onclick=async()=>{
@@ -782,25 +790,40 @@ function checkInviteParam(){
 // still opens on any phone. Update this if the production domain changes.
 const APP_URL="https://beacon-six-woad.vercel.app";
 function inviteLink(code){ return APP_URL+"/?invite="+code; }
-$("#inviteBtn").onclick=async()=>{
-  // Reuse the user's existing invite link if they have one, so a person has one
-  // stable link to share instead of a new code on every tap.
-  let code=null;
-  try{ const {data:ex}=await sb.from("invites").select("code").eq("owner_id",UID).limit(1); if(ex&&ex.length)code=ex[0].code; }catch(e){}
-  if(!code){
-    code=Math.random().toString(36).slice(2,9);
-    const {error}=await sb.from("invites").insert({code,owner_id:UID,owner_name:myProfile.name});
-    if(error){toast("Couldn't create invite: "+error.message);return;}
-  }
-  const link=inviteLink(code);
+$("#inviteBtn").onclick=()=>{
+  // One invite per person, so the sender can track each as pending → accepted (BCN-21).
   openSheetCustom(panel=>{
     panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Invite a trusted contact"));
-    panel.appendChild(el("p","sub","Share this link. When they open it and accept, they join your Safety Circle. Works on any phone — no account needed."));
+    panel.appendChild(el("p","sub","Name who this invite is for, then share the link. It shows as pending in your circle until they accept."));
+    const w=el("div");w.style.marginTop="4px";
+    const l=el("div","label","Who's this for? (optional)");l.style.textAlign="left";
+    const i=document.createElement("input");i.placeholder="e.g. Mum, Tunde";
+    w.appendChild(l);w.appendChild(i);panel.appendChild(w);
+    const b=el("button","btn","Create invite link");b.style.marginTop="12px";
+    b.onclick=async()=>{
+      b.disabled=true;
+      const code=Math.random().toString(36).slice(2,9);
+      const label=i.value.trim()||null;
+      const {error}=await sb.from("invites").insert({code,owner_id:UID,owner_name:myProfile.name,label});
+      if(error){b.disabled=false;toast("Couldn't create invite: "+error.message);return;}
+      await refresh("invites");render();
+      showInviteLink(code,label);
+    };
+    panel.appendChild(b);
+  });
+};
+function showInviteLink(code,label){
+  const link=inviteLink(code);
+  openSheetCustom(panel=>{
+    panel.appendChild(el("div","grab"));panel.appendChild(el("h2","title","Share this invite"));
+    panel.appendChild(el("p","sub",(label?("For "+label+". "):"")+"When they open it and accept, they join your Safety Circle. It stays pending until then."));
     const box=el("div","card mono");box.style.wordBreak="break-all";box.style.fontSize="12.5px";box.textContent=link;panel.appendChild(box);
     const b=el("button","btn","Copy link");b.style.marginTop="12px";b.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(link);toast("Link copied.");};panel.appendChild(b);
     if(navigator.share){const s=el("button","btn sec","Share…");s.style.marginTop="8px";s.onclick=()=>navigator.share({title:"Beacon safety circle",text:"Be my trusted safety contact on Beacon",url:link});panel.appendChild(s);}
+    const c=el("button","btn ghost","Done");c.style.marginTop="8px";c.onclick=closeSheet;panel.appendChild(c);
   });
-};
+}
+async function cancelInvite(code){ const {error}=await sb.from("invites").delete().eq("code",code); if(error){toast("Couldn't cancel: "+error.message);return;} await refresh("invites"); render(); toast("Invite cancelled."); }
 async function revoke(mid){ const {error}=await sb.from("memberships").delete().eq("id",mid); if(error){toast("Revoke failed: "+error.message);return;} await refresh("memberships"); render(); toast("Contact revoked — access ended."); }
 // A contact leaving a circle they were added to (BCN-24). RLS lets either party delete the link.
 async function leaveCircle(mid,owner){ const {error}=await sb.from("memberships").delete().eq("id",mid); if(error){toast("Couldn't leave: "+error.message);return;} await refresh("memberships"); render(); toast("You've left "+(owner||"their")+" circle."); }
@@ -873,8 +896,10 @@ function renderCircle(){
   pib.style.display=pend.length?"block":"none";pib.innerHTML="";
   if(pend.length){pib.appendChild(el("strong",null,"Pending invitations"));pend.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));c.appendChild(el("div","meta","wants you as a contact"));row.appendChild(c);row.appendChild(el("div","sp"));const a=el("button","btn sm","Accept");a.onclick=async()=>{await sb.from("memberships").update({status:"accepted"}).eq("id",m.id);await refresh("memberships");render();};row.appendChild(a);pib.appendChild(row);});}
   const list=$("#circleList");list.innerHTML="";const cs=myContacts();
-  $("#circleCount").textContent=cs.length+" trusted";
-  if(!cs.length)list.appendChild(el("div","muted small","No contacts yet. Invite someone you trust."));
+  const sent=[...invitesSent.values()].filter(v=>v.ownerUid===UID&&!v.accepted).sort((a,b)=>(a.ts||0)-(b.ts||0));
+  $("#circleCount").textContent=cs.length+" trusted"+(sent.length?(" · "+sent.length+" pending"):"");
+  sent.forEach(v=>{const row=el("div","item");row.appendChild(mkAva(v.label||"?"));const c=el("div");c.appendChild(el("div","name",v.label||"Unnamed invite"));c.appendChild(el("div","meta","Pending — not yet accepted"));row.appendChild(c);row.appendChild(el("div","sp"));row.appendChild(el("span","tag pending","pending"));const cp=el("button","btn ghost sm","Link");cp.style.marginLeft="8px";cp.onclick=()=>{const l=inviteLink(v.code);if(navigator.clipboard)navigator.clipboard.writeText(l);toast("Invite link copied.");};row.appendChild(cp);const cx=el("button","btn ghost sm","Cancel");cx.style.marginLeft="6px";cx.onclick=()=>cancelInvite(v.code);row.appendChild(cx);list.appendChild(row);});
+  if(!cs.length&&!sent.length)list.appendChild(el("div","muted small","No contacts yet. Invite someone you trust."));
   cs.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.contactUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.contactUid)));c.appendChild(el("div","meta",phoneOf(m.contactUid)||"trusted contact"));row.appendChild(c);row.appendChild(el("div","sp"));row.appendChild(el("span","tag accepted","active"));const rb=el("button","btn ghost sm","Revoke");rb.style.marginLeft="8px";rb.onclick=()=>revoke(m.id);row.appendChild(rb);list.appendChild(row);});
   const pl=$("#protectingList");pl.innerHTML="";const ip=iProtect();
   if(!ip.length)pl.appendChild(el("div","muted small","You're not in anyone's circle yet."));
