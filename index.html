@@ -180,6 +180,7 @@ input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700
 .obpok{font-weight:800;color:#51cf66}
 .obhint{font-size:11.5px;color:var(--faint);text-align:left;margin-top:-6px}
 .tag.pending{background:rgba(246,183,60,.15);color:var(--warn);border-color:rgba(246,183,60,.4)}
+.prio{width:20px;height:20px;border-radius:50%;background:var(--accent2);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;flex:none;margin-right:2px}
 </style>
 </head>
 <body>
@@ -829,6 +830,16 @@ async function revoke(mid){ const {error}=await sb.from("memberships").delete().
 async function leaveCircle(mid,owner){ const {error}=await sb.from("memberships").delete().eq("id",mid); if(error){toast("Couldn't leave: "+error.message);return;} await refresh("memberships"); render(); toast("You've left "+(owner||"their")+" circle."); }
 
 function myContacts(){return [...memberships.values()].filter(m=>m.ownerUid===UID&&m.status==="accepted");}
+// Contacts in the owner's chosen escalation order (BCN-23). Ties fall back to id for stability.
+function sortedContacts(){return myContacts().slice().sort((a,b)=>((a.order||0)-(b.order||0))||(a.id<b.id?-1:1));}
+async function reorderContact(mid,dir){
+  const arr=sortedContacts(); const idx=arr.findIndex(m=>m.id===mid); if(idx<0)return;
+  const j=idx+dir; if(j<0||j>=arr.length)return;
+  const tmp=arr[idx]; arr[idx]=arr[j]; arr[j]=tmp;
+  // Write a clean 1..N ordering so priority is always unambiguous.
+  for(let i=0;i<arr.length;i++){ const {error}=await sb.from("memberships").update({ord:i+1}).eq("id",arr[i].id); if(error){toast("Couldn't save order: "+error.message);return;} arr[i].order=i+1; }
+  await refresh("memberships"); render(); toast("Escalation order updated.");
+}
 function pendingToMe(){return [...memberships.values()].filter(m=>m.contactUid===UID&&m.status==="pending");}
 function iProtect(){return [...memberships.values()].filter(m=>m.contactUid===UID&&m.status==="accepted");}
 function incidentConcernsMe(i){ if(i.ownerUid===UID)return true; return [...memberships.values()].some(m=>m.ownerUid===i.ownerUid&&m.contactUid===UID&&m.status==="accepted"); }
@@ -895,12 +906,13 @@ function renderCircle(){
   const pend=pendingToMe(),pib=$("#pendingInBox");
   pib.style.display=pend.length?"block":"none";pib.innerHTML="";
   if(pend.length){pib.appendChild(el("strong",null,"Pending invitations"));pend.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));c.appendChild(el("div","meta","wants you as a contact"));row.appendChild(c);row.appendChild(el("div","sp"));const a=el("button","btn sm","Accept");a.onclick=async()=>{await sb.from("memberships").update({status:"accepted"}).eq("id",m.id);await refresh("memberships");render();};row.appendChild(a);pib.appendChild(row);});}
-  const list=$("#circleList");list.innerHTML="";const cs=myContacts();
+  const list=$("#circleList");list.innerHTML="";const cs=sortedContacts();
   const sent=[...invitesSent.values()].filter(v=>v.ownerUid===UID&&!v.accepted).sort((a,b)=>(a.ts||0)-(b.ts||0));
   $("#circleCount").textContent=cs.length+" trusted"+(sent.length?(" · "+sent.length+" pending"):"");
   sent.forEach(v=>{const row=el("div","item");row.appendChild(mkAva(v.label||"?"));const c=el("div");c.appendChild(el("div","name",v.label||"Unnamed invite"));c.appendChild(el("div","meta","Pending — not yet accepted"));row.appendChild(c);row.appendChild(el("div","sp"));row.appendChild(el("span","tag pending","pending"));const cp=el("button","btn ghost sm","Link");cp.style.marginLeft="8px";cp.onclick=()=>{const l=inviteLink(v.code);if(navigator.clipboard)navigator.clipboard.writeText(l);toast("Invite link copied.");};row.appendChild(cp);const cx=el("button","btn ghost sm","Cancel");cx.style.marginLeft="6px";cx.onclick=()=>cancelInvite(v.code);row.appendChild(cx);list.appendChild(row);});
   if(!cs.length&&!sent.length)list.appendChild(el("div","muted small","No contacts yet. Invite someone you trust."));
-  cs.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.contactUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.contactUid)));c.appendChild(el("div","meta",phoneOf(m.contactUid)||"trusted contact"));row.appendChild(c);row.appendChild(el("div","sp"));row.appendChild(el("span","tag accepted","active"));const rb=el("button","btn ghost sm","Revoke");rb.style.marginLeft="8px";rb.onclick=()=>revoke(m.id);row.appendChild(rb);list.appendChild(row);});
+  if(cs.length>1){const h=el("div","muted small","Alerted in this order in an emergency — use ↑ ↓ to change.");h.style.margin="2px 0 6px";list.appendChild(h);}
+  cs.forEach((m,idx)=>{const row=el("div","item");row.appendChild(el("div","prio",String(idx+1)));row.appendChild(mkAva(nameOf(m.contactUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.contactUid)));c.appendChild(el("div","meta",phoneOf(m.contactUid)||"trusted contact"));row.appendChild(c);row.appendChild(el("div","sp"));if(cs.length>1){const up=el("button","btn ghost sm","↑");up.disabled=idx===0;up.onclick=()=>reorderContact(m.id,-1);const dn=el("button","btn ghost sm","↓");dn.disabled=idx===cs.length-1;dn.style.marginLeft="4px";dn.onclick=()=>reorderContact(m.id,1);row.appendChild(up);row.appendChild(dn);}const rb=el("button","btn ghost sm","Revoke");rb.style.marginLeft="8px";rb.onclick=()=>revoke(m.id);row.appendChild(rb);list.appendChild(row);});
   const pl=$("#protectingList");pl.innerHTML="";const ip=iProtect();
   if(!ip.length)pl.appendChild(el("div","muted small","You're not in anyone's circle yet."));
   ip.forEach(m=>{const loc=locations.get(m.ownerUid);const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));let st="Everyday";if(loc&&loc.state==="sos")st="🚨 SOS";else if(loc&&loc.state==="journey")st="On a journey";c.appendChild(el("div","meta",st+(loc&&loc.ts?" · "+ago(loc.ts):"")));row.appendChild(c);row.appendChild(el("div","sp"));if(loc&&loc.state!=="everyday"&&loc.lat){const v=el("button","btn sec sm","View");v.onclick=()=>openWatch(m.ownerUid);row.appendChild(v);}const lv=el("button","btn ghost sm","Leave");lv.style.marginLeft="8px";lv.onclick=()=>leaveCircle(m.id,nameOf(m.ownerUid));row.appendChild(lv);pl.appendChild(row);});
