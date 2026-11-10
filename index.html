@@ -166,6 +166,19 @@ nav .badge{position:absolute;top:4px;right:calc(50% - 22px);background:var(--sos
 input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700}
 .authmsg{min-height:16px;font-size:12.5px;color:#ff8a8a;text-align:left}
 .authmsg.ok{color:#51cf66}
+/* guided onboarding */
+.obdots{display:flex;gap:6px;margin:2px 0 2px}
+.obdots span{width:7px;height:7px;border-radius:50%;background:var(--line);transition:background .2s}
+.obdots span.on{background:var(--accent)}
+.obstep{display:flex;flex-direction:column;gap:12px;width:100%;text-align:left}
+.obfeat{display:flex;gap:11px;align-items:flex-start;text-align:left}
+.obic{font-size:20px;line-height:1.25;flex:0 0 auto}
+.obcheck{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--fg);text-align:left;cursor:pointer;background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:11px}
+.obcheck input{width:auto;min-height:0;margin-top:1px;accent-color:var(--accent)}
+.obperm{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.obperm.ok{border-color:#51cf66;color:#51cf66}
+.obpok{font-weight:800;color:#51cf66}
+.obhint{font-size:11.5px;color:var(--faint);text-align:left;margin-top:-6px}
 </style>
 </head>
 <body>
@@ -212,16 +225,52 @@ input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700
     </div>
   </section>
 
-  <!-- ONBOARDING -->
+  <!-- ONBOARDING (guided first run: welcome → consent → profile → permissions) -->
   <section id="onboard" class="center hidden">
     <div class="bigmk"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l1.8 4.6L18.5 8l-3.6 3 1.2 4.8L12 13.4 7.9 15.8 9.1 11 5.5 8l4.7-1.4z" fill="#fff"/></svg></div>
-    <div><strong style="font-size:20px">Welcome to Beacon</strong><div class="muted small">Set up your safety profile</div></div>
-    <div class="col" style="width:100%;max-width:340px;margin-top:6px">
-      <div><div class="label" style="text-align:left">Your name</div><input id="obName" placeholder="e.g. Wale K." autocomplete="name"></div>
-      <div><div class="label" style="text-align:left">Phone (shown to your circle)</div><input id="obPhone" placeholder="+234…" inputmode="tel"></div>
-      <div><div class="label" style="text-align:left">Email (for alerts)</div><input id="obEmail" placeholder="you@email.com" inputmode="email" autocomplete="email"></div>
-      <button class="btn" id="obSave">Create my profile</button>
-      <div class="opsNote">Your location is never shared with anyone until you add a trusted contact and turn on a safety state. You stay in control.</div>
+    <div><strong style="font-size:20px" id="obTitle">Welcome to Beacon</strong><div class="muted small" id="obSub">Let's set you up — takes a minute</div></div>
+    <div class="obdots" id="obDots"><span></span><span></span><span></span><span></span></div>
+    <div class="col" style="width:100%;max-width:360px;margin-top:2px">
+
+      <!-- step 1: what Beacon is -->
+      <div class="obstep" data-step="1">
+        <div class="obfeat"><span class="obic">📍</span><div><strong>Share when you choose</strong><div class="muted small">Your location stays private until you start a journey or trigger SOS.</div></div></div>
+        <div class="obfeat"><span class="obic">👥</span><div><strong>A circle you trust</strong><div class="muted small">Add people who get alerted the moment you need help.</div></div></div>
+        <div class="obfeat"><span class="obic">🆘</span><div><strong>Help, fast</strong><div class="muted small">One button alerts your circle and the Beacon operations team.</div></div></div>
+        <button class="btn" data-next="2">Get started</button>
+      </div>
+
+      <!-- step 2: consent -->
+      <div class="obstep hidden" data-step="2">
+        <div class="obfeat"><span class="obic">✅</span><div class="muted small"><b>Only shared when active.</b> Your location is shared only while you have a journey or SOS running — never silently in the background.</div></div>
+        <div class="obfeat"><span class="obic">🤝</span><div class="muted small"><b>Both must agree.</b> Adding someone to your circle needs both of you to accept, and either of you can remove it anytime.</div></div>
+        <div class="obfeat"><span class="obic">🛑</span><div class="muted small"><b>You're in control.</b> You can stop sharing, end a journey, or cancel an alert whenever you want.</div></div>
+        <label class="obcheck"><input type="checkbox" id="obConsent"> <span>I understand and agree to how Beacon shares my location.</span></label>
+        <button class="btn" id="obConsentNext" disabled>Continue</button>
+        <button class="linkbtn" data-back="1">Back</button>
+      </div>
+
+      <!-- step 3: emergency profile -->
+      <div class="obstep hidden" data-step="3">
+        <div><div class="label" style="text-align:left">Your name</div><input id="obName" placeholder="e.g. Wale K." autocomplete="name"></div>
+        <div><div class="label" style="text-align:left">Phone (shown to your circle)</div><input id="obPhone" placeholder="+234…" inputmode="tel"></div>
+        <div><div class="label" style="text-align:left">Email (for alerts)</div><input id="obEmail" placeholder="you@email.com" inputmode="email" autocomplete="email"></div>
+        <div><div class="label" style="text-align:left">Emergency note (optional)</div><input id="obNote" placeholder="Blood type, allergies, anything responders should know"></div>
+        <button class="btn" id="obProfileNext">Continue</button>
+        <button class="linkbtn" data-back="2">Back</button>
+      </div>
+
+      <!-- step 4: permission priming -->
+      <div class="obstep hidden" data-step="4">
+        <div class="muted small" style="text-align:left">Beacon needs two permissions to keep you safe. We only use them while you're actively sharing.</div>
+        <button class="btn sec obperm" id="obAllowLoc"><span>📍 Allow location</span><span class="obpok" id="obLocOk"></span></button>
+        <div class="obhint">So your circle can see where you are in an emergency.</div>
+        <button class="btn sec obperm" id="obAllowNotif"><span>🔔 Allow notifications</span><span class="obpok" id="obNotifOk"></span></button>
+        <div class="obhint">So you're alerted the instant someone in your circle needs help.</div>
+        <button class="btn" id="obFinish">Finish setup</button>
+        <button class="linkbtn" data-back="3">Back</button>
+      </div>
+
     </div>
   </section>
 
@@ -261,6 +310,7 @@ input.otpin{letter-spacing:10px;text-align:center;font-size:22px;font-weight:700
         </div>
         <button class="btn sec" id="startJourneyBtn" style="margin-top:12px">Start a protected journey</button>
         <button class="btn ghost" id="myMapBtn" style="margin-top:10px">See my location &amp; trail</button>
+        <button class="btn ghost" id="editProfileBtn" style="margin-top:10px">Edit my emergency profile</button>
       </section>
 
       <!-- CIRCLE -->
@@ -453,18 +503,102 @@ $("#btnForgot").onclick=async()=>{
 };
 const _soBtn=$("#signOutBtn"); if(_soBtn) _soBtn.onclick=()=>signOut();
 
-// ===== onboarding =====
-$("#obSave").onclick=async()=>{
-  const name=$("#obName").value.trim(); if(!name){$("#obName").focus();return;}
-  const phone=$("#obPhone").value.trim(), email=($("#obEmail")?$("#obEmail").value.trim():"");
-  const row={id:UID,name,phone,email};
-  const {error}=await sb.from("profiles").upsert(row);
-  if(error){ toast("Couldn't save profile: "+error.message); return; }
-  myProfile={id:UID,name,phone,email}; profiles.set(UID,myProfile); enterApp();
+// ===== onboarding (guided first run: welcome → consent → profile → permissions) =====
+const CONSENT_VERSION="2026-11-v1";
+let obStep=1, obLocGranted=false, obNotifGranted=false;
+const OB_HEADS={
+  1:["Welcome to Beacon","Let's set you up — takes a minute"],
+  2:["How Beacon works","Your privacy, in plain terms"],
+  3:["Your emergency profile","Shown to your circle if you need help"],
+  4:["Two quick permissions","So Beacon can reach you and your circle"]
 };
+function obGo(n){
+  obStep=n;
+  document.querySelectorAll("#onboard .obstep").forEach(s=>s.classList.toggle("hidden",+s.dataset.step!==n));
+  document.querySelectorAll("#obDots span").forEach((d,i)=>d.classList.toggle("on",i<n));
+  if(OB_HEADS[n]){ $("#obTitle").textContent=OB_HEADS[n][0]; $("#obSub").textContent=OB_HEADS[n][1]; }
+}
+document.querySelectorAll("#onboard [data-next]").forEach(b=>b.onclick=()=>obGo(+b.dataset.next));
+document.querySelectorAll("#onboard [data-back]").forEach(b=>b.onclick=()=>obGo(+b.dataset.back));
+const _obConsent=$("#obConsent");
+if(_obConsent) _obConsent.onchange=()=>{ $("#obConsentNext").disabled=!_obConsent.checked; };
+$("#obConsentNext").onclick=()=>{ if($("#obConsent").checked) obGo(3); };
+$("#obProfileNext").onclick=()=>{ if(!$("#obName").value.trim()){ $("#obName").focus(); toast("Please enter your name."); return; } obGo(4); };
+
+// permission priming — thin seams so Capacitor can swap in native prompts later
+function markLocOk(){ obLocGranted=true; $("#obLocOk").textContent="✓"; $("#obAllowLoc").classList.add("ok"); }
+function markNotifOk(){ obNotifGranted=true; $("#obNotifOk").textContent="✓"; $("#obAllowNotif").classList.add("ok"); }
+async function primeLocation(){
+  if(obLocGranted) return;
+  if(isNative){ markLocOk(); return; } // native asks at share time via BackgroundGeolocation(requestPermissions)
+  if(!navigator.geolocation){ toast("This device has no GPS."); return; }
+  $("#obAllowLoc").disabled=true;
+  navigator.geolocation.getCurrentPosition(
+    ()=>{ markLocOk(); $("#obAllowLoc").disabled=false; },
+    err=>{ $("#obAllowLoc").disabled=false; toast(err.code===1?"Location was blocked — you can allow it later in your browser settings.":"Couldn't get a fix right now — you can try again later."); },
+    {enableHighAccuracy:true,timeout:15000});
+}
+async function primeNotif(){
+  if(obNotifGranted) return;
+  try{
+    if(!("Notification"in window)){ markNotifOk(); return; }
+    const p=await Notification.requestPermission();
+    if(p==="granted") markNotifOk();
+    else toast("Notifications were blocked — you can allow them later in your browser settings.");
+  }catch(e){}
+}
+$("#obAllowLoc").onclick=primeLocation;
+$("#obAllowNotif").onclick=primeNotif;
+$("#obFinish").onclick=async()=>{
+  const name=$("#obName").value.trim(); if(!name){ obGo(3); $("#obName").focus(); return; }
+  const phone=$("#obPhone").value.trim(), email=($("#obEmail")?$("#obEmail").value.trim():""), note=($("#obNote")?$("#obNote").value.trim():"");
+  const row={id:UID,name,phone,email,emergency_note:note||null,consent_at:new Date().toISOString(),consent_version:CONSENT_VERSION};
+  $("#obFinish").disabled=true;
+  const {error}=await sb.from("profiles").upsert(row);
+  $("#obFinish").disabled=false;
+  if(error){ toast("Couldn't save profile: "+error.message); return; }
+  myProfile=row; profiles.set(UID,myProfile); enterApp();
+};
+obGo(1);
+
+// edit emergency profile later (ON-02)
+function openProfileEdit(){
+  openSheetCustom(p=>{
+    p.appendChild(el("div","grab"));
+    p.appendChild(el("h2","title","Your emergency profile"));
+    p.appendChild(el("p","sub","This is what your circle sees if you need help. Keep it current."));
+    function field(label,val,ph,attrs){
+      const w=el("div"); w.style.marginTop="12px";
+      const l=el("div","label",label); l.style.textAlign="left";
+      const i=document.createElement("input"); i.value=val||""; i.placeholder=ph||"";
+      if(attrs) for(const k in attrs) i.setAttribute(k,attrs[k]);
+      w.appendChild(l); w.appendChild(i); p.appendChild(w); return i;
+    }
+    const nm=field("Your name",myProfile.name,"Your name");
+    const ph=field("Phone (shown to your circle)",myProfile.phone,"+234…",{inputmode:"tel"});
+    const em=field("Email (for alerts)",myProfile.email,"you@email.com",{inputmode:"email"});
+    const nt=field("Emergency note (optional)",myProfile.emergency_note,"Blood type, allergies, anything responders should know");
+    const save=el("button","btn","Save changes"); save.style.marginTop="16px";
+    save.onclick=async()=>{
+      const name=nm.value.trim(); if(!name){ nm.focus(); toast("Name can't be empty."); return; }
+      save.disabled=true;
+      const row={id:UID,name,phone:ph.value.trim(),email:em.value.trim(),emergency_note:nt.value.trim()||null};
+      const {error}=await sb.from("profiles").upsert(row);
+      save.disabled=false;
+      if(error){ toast("Couldn't save: "+error.message); return; }
+      myProfile=Object.assign({},myProfile,row); profiles.set(UID,myProfile);
+      $("#meAva").textContent=initials(myProfile.name); if($("#opName"))$("#opName").textContent=myProfile.name;
+      closeSheet(); toast("Profile updated.");
+    };
+    p.appendChild(save);
+    const c=el("button","btn ghost","Close"); c.style.marginTop="10px"; c.onclick=closeSheet; p.appendChild(c);
+  });
+}
 function enterApp(){
   $("#gate").classList.add("hidden"); $("#onboard").classList.add("hidden"); $("#shell").classList.remove("hidden");
   $("#meAva").textContent=initials(myProfile.name); $("#opName").textContent=myProfile.name;
+  $("#meAva").style.cursor="pointer"; $("#meAva").onclick=openProfileEdit;
+  const _ep=$("#editProfileBtn"); if(_ep) _ep.onclick=openProfileEdit;
   startGeo(); initBattery(); watchConn(); checkInviteParam(); requestNotif(); unlockAudio();
   setInterval(tickFresh,1000); setInterval(checkJourneyOverdue,5000);
   render();
