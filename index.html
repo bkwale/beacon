@@ -782,9 +782,16 @@ function renderWatch(ownerUid){
   if(loc&&loc.lat!=null){ setTimeout(()=>{drawMap("mapHost",[{lat:loc.lat,lng:loc.lng,kind:loc.state||"ok",label:self?"You":nameOf(ownerUid)}]);loadTrail(ownerUid);},40); }
   else{ const nb=el("div","card muted small",self?"No location yet. Tap Journey or SOS on Home, keep your screen on, and walk — your trail records here.":"No live location available.");nb.style.marginTop="10px";p.appendChild(nb); }
   const g=el("div","statGrid");g.style.marginTop="12px";
-  g.appendChild(statId("Distance walked","—","distStat"));g.appendChild(statId("Last fix",loc?ago(loc.ts):"—","fixStat"));
-  g.appendChild(stat("Accuracy",loc&&loc.accuracy?"±"+loc.accuracy+" m":"—"));g.appendChild(stat("Battery",loc&&loc.battery!=null?loc.battery+"%":"—"));
-  p.appendChild(g);const c=el("button","btn ghost","Close");c.style.marginTop="14px";c.onclick=closeSheet;p.appendChild(c);
+  const fixAge=loc&&loc.ts?(now()-loc.ts):null;
+  const stale=fixAge!=null&&fixAge>150000&&loc.state&&loc.state!=="everyday";
+  g.appendChild(statId("Distance walked","—","distStat"));
+  g.appendChild(statId("Last fix",loc?(ago(loc.ts)+(stale?" ⚠":"")):"—","fixStat"));
+  g.appendChild(stat("Accuracy",loc&&loc.accuracy?"±"+loc.accuracy+" m":"—"));
+  g.appendChild(stat("Battery",loc&&loc.battery!=null?(loc.battery+"%"+(loc.charging?" ⚡":"")):"—"));
+  g.appendChild(stat("Network",loc?(loc.online===false?"Offline":"Online"):"—"));
+  p.appendChild(g);
+  if(stale){const w=el("div","card");w.style.cssText="margin-top:10px;border-color:rgba(246,183,60,.5);background:rgba(246,183,60,.1)";const t=el("div","small",(self?"Your":nameOf(ownerUid)+"'s")+" last update was "+ago(loc.ts)+" ago — this location may be out of date.");t.style.color="var(--warn)";w.appendChild(t);p.appendChild(w);}
+  const c=el("button","btn ghost","Close");c.style.marginTop="14px";c.onclick=closeSheet;p.appendChild(c);
 }
 function renderSheet(id){
   if(String(id).startsWith("watch_"))return;
