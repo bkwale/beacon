@@ -802,6 +802,8 @@ $("#inviteBtn").onclick=async()=>{
   });
 };
 async function revoke(mid){ const {error}=await sb.from("memberships").delete().eq("id",mid); if(error){toast("Revoke failed: "+error.message);return;} await refresh("memberships"); render(); toast("Contact revoked — access ended."); }
+// A contact leaving a circle they were added to (BCN-24). RLS lets either party delete the link.
+async function leaveCircle(mid,owner){ const {error}=await sb.from("memberships").delete().eq("id",mid); if(error){toast("Couldn't leave: "+error.message);return;} await refresh("memberships"); render(); toast("You've left "+(owner||"their")+" circle."); }
 
 function myContacts(){return [...memberships.values()].filter(m=>m.ownerUid===UID&&m.status==="accepted");}
 function pendingToMe(){return [...memberships.values()].filter(m=>m.contactUid===UID&&m.status==="pending");}
@@ -876,7 +878,7 @@ function renderCircle(){
   cs.forEach(m=>{const row=el("div","item");row.appendChild(mkAva(nameOf(m.contactUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.contactUid)));c.appendChild(el("div","meta",phoneOf(m.contactUid)||"trusted contact"));row.appendChild(c);row.appendChild(el("div","sp"));row.appendChild(el("span","tag accepted","active"));const rb=el("button","btn ghost sm","Revoke");rb.style.marginLeft="8px";rb.onclick=()=>revoke(m.id);row.appendChild(rb);list.appendChild(row);});
   const pl=$("#protectingList");pl.innerHTML="";const ip=iProtect();
   if(!ip.length)pl.appendChild(el("div","muted small","You're not in anyone's circle yet."));
-  ip.forEach(m=>{const loc=locations.get(m.ownerUid);const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));let st="Everyday";if(loc&&loc.state==="sos")st="🚨 SOS";else if(loc&&loc.state==="journey")st="On a journey";c.appendChild(el("div","meta",st+(loc&&loc.ts?" · "+ago(loc.ts):"")));row.appendChild(c);row.appendChild(el("div","sp"));if(loc&&loc.state!=="everyday"&&loc.lat){const v=el("button","btn sec sm","View");v.onclick=()=>openWatch(m.ownerUid);row.appendChild(v);}pl.appendChild(row);});
+  ip.forEach(m=>{const loc=locations.get(m.ownerUid);const row=el("div","item");row.appendChild(mkAva(nameOf(m.ownerUid)));const c=el("div");c.appendChild(el("div","name",nameOf(m.ownerUid)));let st="Everyday";if(loc&&loc.state==="sos")st="🚨 SOS";else if(loc&&loc.state==="journey")st="On a journey";c.appendChild(el("div","meta",st+(loc&&loc.ts?" · "+ago(loc.ts):"")));row.appendChild(c);row.appendChild(el("div","sp"));if(loc&&loc.state!=="everyday"&&loc.lat){const v=el("button","btn sec sm","View");v.onclick=()=>openWatch(m.ownerUid);row.appendChild(v);}const lv=el("button","btn ghost sm","Leave");lv.style.marginLeft="8px";lv.onclick=()=>leaveCircle(m.id,nameOf(m.ownerUid));row.appendChild(lv);pl.appendChild(row);});
 }
 function renderAlerts(){
   const list=$("#alertsList");list.innerHTML="";
